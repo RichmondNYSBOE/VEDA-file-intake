@@ -99,6 +99,21 @@ resource "google_project_iam_member" "scanner_eventarc_receiver" {
 }
 
 # ---------------------------------------------------------------------------
+# Cloud Build service account — needs Eventarc Admin to create/update triggers
+# during the CI/CD pipeline (cloudbuild.yaml step: setup-scanner-trigger)
+# ---------------------------------------------------------------------------
+
+locals {
+  cloud_build_sa_email = "${var.project_number}-compute@developer.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "cloudbuild_eventarc_admin" {
+  project = var.project_id
+  role    = "roles/eventarc.admin"
+  member  = "serviceAccount:${local.cloud_build_sa_email}"
+}
+
+# ---------------------------------------------------------------------------
 # GCS Buckets — already created manually:
 #   - nysboe-veda-interim-uploads  (unscanned / upload target)
 #   - nysboe_veda_clean            (post-scan clean files)
