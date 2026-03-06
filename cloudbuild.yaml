@@ -85,6 +85,27 @@ steps:
       - '--set-env-vars'
       - 'GCLOUD_PROJECT=$PROJECT_ID,UNSCANNED_BUCKET=nysboe-veda-interim-uploads,CLEAN_BUCKET=nysboe_veda_clean,QUARANTINE_BUCKET=nysboe_veda_quarantine'
 
+  # Ensure Eventarc trigger routes ONLY unscanned-bucket events to the scanner.
+  # This is idempotent — if the trigger already exists with the correct config,
+  # the update is a no-op.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'setup-scanner-trigger'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Delete any existing trigger so we can recreate with exact filters
+        gcloud eventarc triggers delete veda-malware-scan-trigger \
+          --location=us-east1 --quiet 2>/dev/null || true
+
+        gcloud eventarc triggers create veda-malware-scan-trigger \
+          --location=us-east1 \
+          --destination-run-service=veda-malware-scanner \
+          --destination-run-region=us-east1 \
+          --event-filters="type=google.cloud.storage.object.v1.finalized" \
+          --event-filters="bucket=nysboe-veda-interim-uploads" \
+          --service-account=$_SCANNER_SA_EMAIL
+
 images:
   - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/app:$COMMIT_SHA'
   - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/app:latest'
@@ -93,6 +114,7 @@ images:
 
 substitutions:
   _GCS_BUCKET_NAME: ''  # Set per Cloud Build trigger (UAT vs Production)
+  _SCANNER_SA_EMAIL: ''  # Scanner service account email (e.g., veda-malware-scanner@PROJECT.iam.gserviceaccount.com)
 
 options:
   logging: CLOUD_LOGGING_ONLY
