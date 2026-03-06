@@ -1,0 +1,98 @@
+steps:
+  # =========================================================================
+  # VoteVault Web Application
+  # =========================================================================
+
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-app'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/app:$COMMIT_SHA'
+      - '-t'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/app:latest'
+      - '.'
+
+  # Push the tagged image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-app'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/app'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-app'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'votevault'
+      - '--image'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/app:$COMMIT_SHA'
+      - '--region'
+      - 'us-east1'
+      - '--set-env-vars'
+      - 'GCLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET_NAME=$_GCS_BUCKET_NAME'
+
+  # =========================================================================
+  # ClamAV Malware Scanner Service
+  # =========================================================================
+
+  # Build the malware scanner image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-scanner'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/malware-scanner:$COMMIT_SHA'
+      - '-t'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/malware-scanner:latest'
+      - 'infra/malware-scanner'
+
+  # Push the scanner image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-scanner'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/malware-scanner'
+
+  # Deploy malware scanner to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-scanner'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'veda-malware-scanner'
+      - '--image'
+      - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/malware-scanner:$COMMIT_SHA'
+      - '--region'
+      - 'us-east1'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '1'
+      - '--timeout'
+      - '300'
+      - '--max-instances'
+      - '3'
+      - '--no-allow-unauthenticated'
+      - '--cpu-boost'
+      - '--set-env-vars'
+      - 'GCLOUD_PROJECT=$PROJECT_ID,UNSCANNED_BUCKET=nysboe-veda-interim-uploads,CLEAN_BUCKET=nysboe_veda_clean,QUARANTINE_BUCKET=nysboe_veda_quarantine'
+
+images:
+  - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/app:$COMMIT_SHA'
+  - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/app:latest'
+  - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/malware-scanner:$COMMIT_SHA'
+  - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/malware-scanner:latest'
+
+substitutions:
+  _GCS_BUCKET_NAME: ''  # Set per Cloud Build trigger (UAT vs Production)
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -1,0 +1,21 @@
+# Settings to manage and configure a Firebase App Hosting backend.
+# https://firebase.google.com/docs/app-hosting/configure
+#
+# Environment-specific values (GCLOUD_PROJECT, GCS_BUCKET_NAME) should be
+# configured per Firebase App Hosting backend, not hardcoded here.
+# See: https://firebase.google.com/docs/app-hosting/configure#environment_variables
+
+runConfig:
+  # Increase this value if you'd like to automatically spin up
+  # more instances in response to increased traffic.
+  maxInstances: 1
+
+env:
+  - variable: GCLOUD_PROJECT
+    value: ''  # Set per Firebase App Hosting backend
+    availability:
+      - RUNTIME
+  - variable: GCS_BUCKET_NAME
+    value: ''  # Set per Firebase App Hosting backend
+    availability:
+      - RUNTIME

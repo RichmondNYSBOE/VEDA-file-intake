@@ -1,0 +1,23 @@
+# VEDA Malware Scanner — Terraform Variables
+# Copy this file to terraform.tfvars and fill in the values.
+
+project_id = "your-gcp-project-id"
+region     = "us-east1"
+
+# The existing upload bucket becomes the "unscanned" bucket
+unscanned_bucket_name = "nysboe-veda-interim-uploads"
+
+# Post-scan buckets (already created in GCP Console)
+clean_bucket_name      = "nysboe_veda_clean"
+quarantine_bucket_name = "nysboe_veda_quarantine"
+
+# Container image — built via Cloud Build
+# e.g. us-east1-docker.pkg.dev/PROJECT_ID/veda-file-intake/malware-scanner:latest
+scanner_image = "us-east1-docker.pkg.dev/PROJECT_ID/veda-file-intake/malware-scanner:latest"
+
+# Optional: use an existing service account (leave empty to create one)
+scanner_service_account_email = ""
+
+# ClamAV needs ~1.5GB RAM for virus definitions
+scanner_memory = "2Gi"
+scanner_cpu    = "1"

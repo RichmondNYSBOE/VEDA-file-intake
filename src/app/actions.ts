@@ -1,0 +1,912 @@
+'use server'
+
+import { randomUUID } from 'crypto';
+import { Storage } from '@google-cloud/storage';
+import { fileSchemas, type FieldSchema } from '@/lib/file-schemas';
+import { bq, DATASET, ensureSchema } from '@/lib/bigquery';
+import { convertShapefileToGeoJSON, validateGeoJSON } from '@/lib/shapefile-converter';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface SubmissionLogEntry {
+  id: string;
+  timestamp: string;
+  fileName: string;
+  fileType: string;
+  success: boolean;
+  message: string;
+  uploadedBy?: string;
+  electionEventId?: string;
+  scanStatus?: string;
+}
+
+export interface FileVersionEntry {
+  id: string;
+  fileType: string;
+  fileName: string;
+  gcsPath: string;
+  version: number;
+  uploadedAt: string;
+  electionAuthorityName: string;
+  electionAuthorityType: string;
+  amendmentNotes: string;
+  isActive: boolean;
+  uploadedBy?: string;
+  electionEventId?: string;
+}
+
+export interface ElectionEventFileStatus {
+  uploaded: boolean;
+  fileName?: string;
+  uploadedAt?: string;
+  uploadedBy?: string;
+  version?: number;
+  gcsPath?: string;
+}
+
+export interface ElectionEvent {
+  id: string;
+  date: string;
+  electionType: string;
+  electionName: string;
+  electionAuthorityName: string;
+  electionAuthorityType: string;
+  createdAt: string;
+  createdBy: string;
+  files: Record<string, ElectionEventFileStatus>;
+}
+
+export interface NoElectionsCertification {
+  id: string;
+  year: number;
+  electionAuthorityName: string;
+  electionAuthorityType: string;
+  certifiedAt: string;
+  certifiedBy: string;
+}
+
+// Hard-coded current user (auth to be added later)
+const CURRENT_USER = "Ryan Richmond";
+
+/** Fully-qualified table reference. */
+function table(name: string): string {
+  return `\`${DATASET}.${name}\``;
+}
+
+// ---------------------------------------------------------------------------
+// BigQuery helpers — Submission logs
+// ---------------------------------------------------------------------------
+
+async function logSubmission(
+  fileName: string,
+  fileType: string,
+  success: boolean,
+  message: string,
+  electionEventId?: string,
+): Promise<void> {
+  try {
+    await ensureSchema();
+    const row = {
+      id: randomUUID(),
+      timestamp: new Date().toISOString(),
+      file_name: fileName,
+      file_type: fileType,
+      success,
+      message,
+      uploaded_by: CURRENT_USER,
+      election_event_id: electionEventId ?? null,
+      scan_status: success ? 'pending_scan' : null,
+    };
+    await bq.dataset(DATASET).table('submission_logs').insert([row]);
+  } catch (error) {
+    console.error('Failed to log submission to BigQuery:', error);
+  }
+}
+
+export async function getSubmissionLogs(electionEventId?: string): Promise<SubmissionLogEntry[]> {
+  try {
+    await ensureSchema();
+    let query: string;
+    const params: Record<string, string> = {};
+
+    if (electionEventId) {
+      query = `SELECT * FROM ${table('submission_logs')} WHERE election_event_id = @eventId ORDER BY timestamp DESC LIMIT 50`;
+      params.eventId = electionEventId;
+    } else {
+      query = `SELECT * FROM ${table('submission_logs')} ORDER BY timestamp DESC LIMIT 50`;
+    }
+
+    const [rows] = await bq.query({ query, params });
+
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id ?? ''),
+      timestamp: row.timestamp ? (row.timestamp as { value: string }).value ?? String(row.timestamp) : new Date().toISOString(),
+      fileName: String(row.file_name ?? ''),
+      fileType: String(row.file_type ?? ''),
+      success: Boolean(row.success),
+      message: String(row.message ?? ''),
+      uploadedBy: String(row.uploaded_by ?? ''),
+      electionEventId: String(row.election_event_id ?? ''),
+      scanStatus: row.scan_status ? String(row.scan_status) : undefined,
+    }));
+  } catch (error) {
+    console.error('Failed to fetch submission logs:', error);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// File version tracking
+// ---------------------------------------------------------------------------
+
+async function createFileVersion(
+  fileType: string,
+  fileName: string,
+  gcsPath: string,
+  electionAuthorityName: string,
+  electionAuthorityType: string,
+  amendmentNotes: string,
+  electionEventId?: string,
+): Promise<void> {
+  try {
+    await ensureSchema();
+
+    // Find the latest version for this fileType + authority + event
+    let versionQuery = `SELECT IFNULL(MAX(version), 0) AS max_version FROM ${table('file_versions')} WHERE file_type = @fileType AND election_authority_name = @authorityName`;
+    const versionParams: Record<string, string> = {
+      fileType,
+      authorityName: electionAuthorityName,
+    };
+    if (electionEventId) {
+      versionQuery += ` AND election_event_id = @eventId`;
+      versionParams.eventId = electionEventId;
+    }
+
+    const [versionRows] = await bq.query({ query: versionQuery, params: versionParams });
+    const maxVersion = Number((versionRows as Record<string, unknown>[])[0]?.max_version ?? 0);
+    const nextVersion = maxVersion + 1;
+
+    // Mark all previous versions for this fileType + authority + event as inactive
+    if (maxVersion > 0) {
+      let deactivateQuery = `UPDATE ${table('file_versions')} SET is_active = FALSE WHERE file_type = @fileType AND election_authority_name = @authorityName AND is_active = TRUE`;
+      const deactivateParams: Record<string, string> = {
+        fileType,
+        authorityName: electionAuthorityName,
+      };
+      if (electionEventId) {
+        deactivateQuery += ` AND election_event_id = @eventId`;
+        deactivateParams.eventId = electionEventId;
+      }
+      await bq.query({ query: deactivateQuery, params: deactivateParams });
+    }
+
+    // Insert new version record
+    const row = {
+      id: randomUUID(),
+      file_type: fileType,
+      file_name: fileName,
+      gcs_path: gcsPath,
+      version: nextVersion,
+      uploaded_at: new Date().toISOString(),
+      election_authority_name: electionAuthorityName,
+      election_authority_type: electionAuthorityType,
+      amendment_notes: amendmentNotes || '',
+      is_active: true,
+      uploaded_by: CURRENT_USER,
+      election_event_id: electionEventId ?? null,
+    };
+    await bq.dataset(DATASET).table('file_versions').insert([row]);
+  } catch (error) {
+    console.error('Failed to create file version record:', error);
+  }
+}
+
+export async function getFileVersions(
+  fileType: string,
+  electionAuthorityName: string,
+): Promise<FileVersionEntry[]> {
+  try {
+    await ensureSchema();
+    const query = `SELECT * FROM ${table('file_versions')} WHERE file_type = @fileType AND election_authority_name = @authorityName ORDER BY version DESC`;
+    const [rows] = await bq.query({
+      query,
+      params: { fileType, authorityName: electionAuthorityName },
+    });
+
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id ?? ''),
+      fileType: String(row.file_type ?? ''),
+      fileName: String(row.file_name ?? ''),
+      gcsPath: String(row.gcs_path ?? ''),
+      version: Number(row.version ?? 1),
+      uploadedAt: row.uploaded_at ? (row.uploaded_at as { value: string }).value ?? String(row.uploaded_at) : new Date().toISOString(),
+      electionAuthorityName: String(row.election_authority_name ?? ''),
+      electionAuthorityType: String(row.election_authority_type ?? ''),
+      amendmentNotes: String(row.amendment_notes ?? ''),
+      isActive: Boolean(row.is_active),
+      uploadedBy: String(row.uploaded_by ?? ''),
+      electionEventId: String(row.election_event_id ?? ''),
+    }));
+  } catch (error) {
+    console.error('Failed to fetch file versions:', error);
+    return [];
+  }
+}
+
+export async function getAllFileVersions(
+  electionAuthorityName: string,
+): Promise<FileVersionEntry[]> {
+  try {
+    await ensureSchema();
+    const query = `SELECT * FROM ${table('file_versions')} WHERE election_authority_name = @authorityName AND is_active = TRUE`;
+    const [rows] = await bq.query({
+      query,
+      params: { authorityName: electionAuthorityName },
+    });
+
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id ?? ''),
+      fileType: String(row.file_type ?? ''),
+      fileName: String(row.file_name ?? ''),
+      gcsPath: String(row.gcs_path ?? ''),
+      version: Number(row.version ?? 1),
+      uploadedAt: row.uploaded_at ? (row.uploaded_at as { value: string }).value ?? String(row.uploaded_at) : new Date().toISOString(),
+      electionAuthorityName: String(row.election_authority_name ?? ''),
+      electionAuthorityType: String(row.election_authority_type ?? ''),
+      amendmentNotes: String(row.amendment_notes ?? ''),
+      isActive: Boolean(row.is_active),
+      uploadedBy: String(row.uploaded_by ?? ''),
+      electionEventId: String(row.election_event_id ?? ''),
+    }));
+  } catch (error) {
+    console.error('Failed to fetch active file versions:', error);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Election Events
+// ---------------------------------------------------------------------------
+
+const DEFAULT_FILE_STATUS: ElectionEventFileStatus = { uploaded: false };
+
+const FILE_TYPES = ["poll-sites", "election-results", "voter-history", "district-maps"] as const;
+
+/** Convert the REPEATED files record from BigQuery into the Record<string, ElectionEventFileStatus> shape. */
+function parseFilesRecord(
+  files: Array<Record<string, unknown>> | undefined | null,
+): Record<string, ElectionEventFileStatus> {
+  const result: Record<string, ElectionEventFileStatus> = {};
+  for (const ft of FILE_TYPES) {
+    result[ft] = { ...DEFAULT_FILE_STATUS };
+  }
+  if (Array.isArray(files)) {
+    for (const f of files) {
+      const ft = String(f.file_type ?? '');
+      if (ft) {
+        result[ft] = {
+          uploaded: Boolean(f.uploaded),
+          fileName: f.file_name ? String(f.file_name) : undefined,
+          uploadedAt: f.uploaded_at ? String(f.uploaded_at) : undefined,
+          uploadedBy: f.uploaded_by ? String(f.uploaded_by) : undefined,
+          version: f.version ? Number(f.version) : undefined,
+          gcsPath: f.gcs_path ? String(f.gcs_path) : undefined,
+        };
+      }
+    }
+  }
+  return result;
+}
+
+/** Convert Record<string, ElectionEventFileStatus> to the BigQuery REPEATED struct. */
+function serializeFilesRecord(
+  files: Record<string, ElectionEventFileStatus>,
+): Array<Record<string, unknown>> {
+  return Object.entries(files).map(([fileType, status]) => ({
+    file_type: fileType,
+    uploaded: status.uploaded,
+    file_name: status.fileName ?? null,
+    uploaded_at: status.uploadedAt ?? null,
+    uploaded_by: status.uploadedBy ?? null,
+    version: status.version ?? null,
+    gcs_path: status.gcsPath ?? null,
+  }));
+}
+
+export async function createElectionEvent(data: {
+  date: string;
+  electionType: string;
+  electionName: string;
+  electionAuthorityName: string;
+  electionAuthorityType: string;
+}): Promise<{ success: boolean; message: string; id?: string }> {
+  try {
+    await ensureSchema();
+
+    // Check for duplicate election events
+    const dupQuery = `SELECT id FROM ${table('election_events')} WHERE election_name = @name AND election_authority_name = @authority LIMIT 1`;
+    const [dupRows] = await bq.query({
+      query: dupQuery,
+      params: { name: data.electionName, authority: data.electionAuthorityName },
+    });
+
+    if ((dupRows as unknown[]).length > 0) {
+      return {
+        success: false,
+        message: `An election event named "${data.electionName}" already exists for your authority. Please choose a different date or election type.`,
+      };
+    }
+
+    const id = randomUUID();
+    const defaultFiles: Record<string, ElectionEventFileStatus> = {};
+    for (const ft of FILE_TYPES) {
+      defaultFiles[ft] = { ...DEFAULT_FILE_STATUS };
+    }
+
+    const row = {
+      id,
+      date: data.date,
+      election_type: data.electionType,
+      election_name: data.electionName,
+      election_authority_name: data.electionAuthorityName,
+      election_authority_type: data.electionAuthorityType,
+      created_at: new Date().toISOString(),
+      created_by: CURRENT_USER,
+      files: serializeFilesRecord(defaultFiles),
+    };
+
+    await bq.dataset(DATASET).table('election_events').insert([row]);
+
+    return {
+      success: true,
+      message: `Election event "${data.electionName}" has been created.`,
+      id,
+    };
+  } catch (error: unknown) {
+    console.error('Failed to create election event:', error);
+    const detail =
+      error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      message: `Failed to create the election event: ${detail}`,
+    };
+  }
+}
+
+export async function getElectionEvents(
+  electionAuthorityName: string,
+): Promise<ElectionEvent[]> {
+  try {
+    await ensureSchema();
+    const query = `SELECT * FROM ${table('election_events')} WHERE election_authority_name = @authority ORDER BY created_at DESC`;
+    const [rows] = await bq.query({
+      query,
+      params: { authority: electionAuthorityName },
+    });
+
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id ?? ''),
+      date: String(row.date ?? ''),
+      electionType: String(row.election_type ?? ''),
+      electionName: String(row.election_name ?? ''),
+      electionAuthorityName: String(row.election_authority_name ?? ''),
+      electionAuthorityType: String(row.election_authority_type ?? ''),
+      createdAt: row.created_at ? (row.created_at as { value: string }).value ?? String(row.created_at) : new Date().toISOString(),
+      createdBy: String(row.created_by ?? ''),
+      files: parseFilesRecord(row.files as Array<Record<string, unknown>> | undefined),
+    }));
+  } catch (error) {
+    console.error('Failed to fetch election events:', error);
+    return [];
+  }
+}
+
+export async function getElectionEvent(id: string): Promise<ElectionEvent | null> {
+  try {
+    await ensureSchema();
+    const query = `SELECT * FROM ${table('election_events')} WHERE id = @id LIMIT 1`;
+    const [rows] = await bq.query({ query, params: { id } });
+
+    if ((rows as unknown[]).length === 0) return null;
+
+    const row = (rows as Record<string, unknown>[])[0];
+    return {
+      id: String(row.id ?? ''),
+      date: String(row.date ?? ''),
+      electionType: String(row.election_type ?? ''),
+      electionName: String(row.election_name ?? ''),
+      electionAuthorityName: String(row.election_authority_name ?? ''),
+      electionAuthorityType: String(row.election_authority_type ?? ''),
+      createdAt: row.created_at ? (row.created_at as { value: string }).value ?? String(row.created_at) : new Date().toISOString(),
+      createdBy: String(row.created_by ?? ''),
+      files: parseFilesRecord(row.files as Array<Record<string, unknown>> | undefined),
+    };
+  } catch (error) {
+    console.error('Failed to fetch election event:', error);
+    return null;
+  }
+}
+
+async function updateElectionEventFileStatus(
+  electionEventId: string,
+  fileType: string,
+  status: ElectionEventFileStatus,
+): Promise<void> {
+  try {
+    await ensureSchema();
+
+    // Fetch the current event to get existing files
+    const current = await getElectionEvent(electionEventId);
+    if (!current) return;
+
+    // Update the specific file type
+    const updatedFiles = { ...current.files, [fileType]: status };
+
+    // BigQuery DML UPDATE replaces the entire files array
+    const query = `UPDATE ${table('election_events')} SET files = @files WHERE id = @id`;
+    await bq.query({
+      query,
+      params: {
+        id: electionEventId,
+        files: serializeFilesRecord(updatedFiles),
+      },
+      types: {
+        files: [
+          {
+            file_type: 'STRING',
+            uploaded: 'BOOL',
+            file_name: 'STRING',
+            uploaded_at: 'STRING',
+            uploaded_by: 'STRING',
+            version: 'INT64',
+            gcs_path: 'STRING',
+          },
+        ],
+      },
+    });
+  } catch (error) {
+    console.error('Failed to update election event file status:', error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Delete Election Event
+// ---------------------------------------------------------------------------
+
+export async function deleteElectionEvent(
+  id: string,
+): Promise<{ success: boolean; message: string }> {
+  try {
+    await ensureSchema();
+
+    // Verify the event exists before attempting to delete
+    const event = await getElectionEvent(id);
+    if (!event) {
+      return {
+        success: false,
+        message: 'The election event could not be found. It may have already been deleted.',
+      };
+    }
+
+    // Delete the election event from BigQuery
+    const query = `DELETE FROM ${table('election_events')} WHERE id = @id`;
+    await bq.query({ query, params: { id } });
+
+    // Also clean up related file versions (mark as inactive)
+    const deactivateQuery = `UPDATE ${table('file_versions')} SET is_active = FALSE WHERE election_event_id = @eventId`;
+    await bq.query({ query: deactivateQuery, params: { eventId: id } });
+
+    return {
+      success: true,
+      message: `Election event "${event.electionName}" has been deleted.`,
+    };
+  } catch (error: unknown) {
+    console.error('Failed to delete election event:', error);
+    const detail = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      message: `Failed to delete the election event: ${detail}`,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// No Elections Certifications
+// ---------------------------------------------------------------------------
+
+export async function certifyNoElections(data: {
+  year: number;
+  electionAuthorityName: string;
+  electionAuthorityType: string;
+}): Promise<{ success: boolean; message: string }> {
+  try {
+    await ensureSchema();
+
+    // Check for existing certification for this year + authority
+    const dupQuery = `SELECT id FROM ${table('no_elections_certifications')} WHERE year = @year AND election_authority_name = @authority LIMIT 1`;
+    const [dupRows] = await bq.query({
+      query: dupQuery,
+      params: { year: data.year, authority: data.electionAuthorityName },
+    });
+
+    if ((dupRows as unknown[]).length > 0) {
+      return {
+        success: false,
+        message: `A "No Elections" certification for ${data.year} already exists for your authority.`,
+      };
+    }
+
+    const row = {
+      id: randomUUID(),
+      year: data.year,
+      election_authority_name: data.electionAuthorityName,
+      election_authority_type: data.electionAuthorityType,
+      certified_at: new Date().toISOString(),
+      certified_by: CURRENT_USER,
+    };
+    await bq.dataset(DATASET).table('no_elections_certifications').insert([row]);
+
+    return {
+      success: true,
+      message: `Your authority has been certified as having no elections in ${data.year}.`,
+    };
+  } catch (error) {
+    console.error('Failed to certify no elections:', error);
+    return {
+      success: false,
+      message: 'Something went wrong while saving the certification. Please try again.',
+    };
+  }
+}
+
+export async function getNoElectionsCertifications(
+  electionAuthorityName: string,
+): Promise<NoElectionsCertification[]> {
+  try {
+    await ensureSchema();
+    const query = `SELECT * FROM ${table('no_elections_certifications')} WHERE election_authority_name = @authority ORDER BY certified_at DESC`;
+    const [rows] = await bq.query({
+      query,
+      params: { authority: electionAuthorityName },
+    });
+
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id ?? ''),
+      year: Number(row.year ?? 0),
+      electionAuthorityName: String(row.election_authority_name ?? ''),
+      electionAuthorityType: String(row.election_authority_type ?? ''),
+      certifiedAt: row.certified_at ? (row.certified_at as { value: string }).value ?? String(row.certified_at) : new Date().toISOString(),
+      certifiedBy: String(row.certified_by ?? ''),
+    }));
+  } catch (error) {
+    console.error('Failed to fetch no-elections certifications:', error);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CSV validation — user-friendly error messages
+// ---------------------------------------------------------------------------
+
+/** Convert internal type names to user-friendly labels. */
+function friendlyTypeName(type: string): string {
+  switch (type) {
+    case "string":
+      return "Text";
+    case "number":
+      return "Number";
+    case "boolean":
+      return "Yes/No (true or false)";
+    case "date":
+      return "Date (MM/DD/YYYY)";
+    default:
+      return type;
+  }
+}
+
+/** Describe a value in user-friendly terms. */
+function friendlyValue(value: string): string {
+  if (value === "" || value === '""' || value === "''") {
+    return "Blank (empty)";
+  }
+  return `"${value}"`;
+}
+
+function validateType(value: string, fieldSchema: FieldSchema): boolean {
+  const trimmedValue = value.trim();
+
+  if (trimmedValue === '') {
+    return fieldSchema.required === false;
+  }
+
+  switch (fieldSchema.type) {
+    case "string":
+      return true;
+    case "number":
+      return !isNaN(Number(trimmedValue));
+    case "boolean": {
+      const lowerValue = trimmedValue.toLowerCase();
+      return lowerValue === 'true' || lowerValue === 'false';
+    }
+    case "date": {
+      const dateRegex = /^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/;
+      if (!dateRegex.test(trimmedValue)) {
+        return false;
+      }
+      // Normalize 2-digit years to 4-digit (00-29 → 2000-2029, 30-99 → 1930-1999)
+      const parts = trimmedValue.split("/");
+      if (parts[2].length === 2) {
+        const yy = parseInt(parts[2], 10);
+        parts[2] = String(yy <= 29 ? 2000 + yy : 1900 + yy);
+      }
+      const date = new Date(`${parts[0]}/${parts[1]}/${parts[2]}`);
+      return !isNaN(date.getTime());
+    }
+    default:
+      return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Upload logic
+// ---------------------------------------------------------------------------
+
+async function performUpload(
+  file: File,
+  fileType: string,
+): Promise<{ success: boolean; message: string; gcsPath?: string }> {
+  const bucketName = process.env.GCS_BUCKET_NAME;
+
+  if (!bucketName || bucketName === 'your-gcs-bucket-name-here') {
+    return {
+      success: false,
+      message: 'The server is not properly configured for file storage. Please contact your administrator.',
+    };
+  }
+
+  if (!file || file.size === 0) {
+    return { success: false, message: 'No file was provided. Please select a file and try again.' };
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    return { success: false, message: 'This file is too large. The maximum allowed size is 5 MB. Please reduce the file size and try again.' };
+  }
+
+  // District maps: accept .zip (shapefile) / .geojson / .json — convert to GeoJSON
+  if (fileType === "district-maps") {
+    const name = file.name.toLowerCase();
+    const validExtension = name.endsWith('.zip') || name.endsWith('.geojson') || name.endsWith('.json');
+    if (!validExtension) {
+      return {
+        success: false,
+        message: 'This file type is not accepted for District Maps. Please upload a .zip file (containing shapefiles) or a .geojson file.',
+      };
+    }
+
+    try {
+      const storage = new Storage();
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const timestamp = Date.now();
+
+      let geojsonBuffer: Buffer;
+      let geojsonFileName: string;
+      let featureCount: number | undefined;
+
+      if (name.endsWith('.zip')) {
+        // Convert shapefile .zip → GeoJSON
+        const result = await convertShapefileToGeoJSON(buffer);
+        if (!result.success || !result.geojson) {
+          return { success: false, message: result.message };
+        }
+
+        const geojsonString = JSON.stringify(result.geojson);
+        geojsonBuffer = Buffer.from(geojsonString, 'utf-8');
+        geojsonFileName = file.name.replace(/\.zip$/i, '.geojson');
+        featureCount = result.featureCount;
+
+        // Also store the original .zip for reference
+        const originalDest = `uploads/${fileType}/${timestamp}-${file.name}`;
+        await storage.bucket(bucketName).file(originalDest).save(buffer);
+      } else {
+        // Validate and normalize uploaded .geojson / .json
+        const result = validateGeoJSON(buffer);
+        if (!result.success || !result.geojson) {
+          return { success: false, message: result.message };
+        }
+
+        const geojsonString = JSON.stringify(result.geojson);
+        geojsonBuffer = Buffer.from(geojsonString, 'utf-8');
+        geojsonFileName = name.endsWith('.geojson') ? file.name : file.name.replace(/\.json$/i, '.geojson');
+        featureCount = result.featureCount;
+      }
+
+      // Upload the GeoJSON to GCS
+      const geojsonDest = `uploads/${fileType}/${timestamp}-${geojsonFileName}`;
+      await storage.bucket(bucketName).file(geojsonDest).save(geojsonBuffer, {
+        metadata: {
+          contentType: 'application/geo+json',
+          metadata: {
+            'veda-file-type': fileType,
+            'veda-upload-timestamp': new Date().toISOString(),
+            'veda-scan-status': 'pending',
+          },
+        },
+      });
+
+      const countMsg = featureCount != null ? ` (${featureCount} feature${featureCount === 1 ? '' : 's'})` : '';
+      return {
+        success: true,
+        message: name.endsWith('.zip')
+          ? `${file.name} was converted to GeoJSON and uploaded successfully${countMsg}.`
+          : `${file.name} has been uploaded successfully${countMsg}.`,
+        gcsPath: geojsonDest,
+      };
+    } catch (error: unknown) {
+      console.error('Error uploading to GCS:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('Could not refresh access token')) {
+        return {
+          success: false,
+          message: 'There was a temporary problem connecting to the file storage service. Please wait a moment and try again.',
+        };
+      }
+      return {
+        success: false,
+        message: 'There was a problem uploading your file. Please try again. If the problem continues, contact your administrator.',
+      };
+    }
+  }
+
+  // CSV validation
+  if (file.type !== 'text/csv') {
+    return { success: false, message: 'This file is not a CSV. Please upload a .csv file.' };
+  }
+
+  const schema = fileSchemas[fileType];
+  if (!schema) {
+    return { success: false, message: `We don't recognize this file type ("${fileType}"). Please try a different upload option.` };
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const fileContent = buffer.toString('utf-8');
+  const lines = fileContent.split('\n').filter(line => line.trim() !== '');
+
+  if (lines.length < 2) {
+    return { success: false, message: 'This CSV file appears to be empty. It must contain a header row and at least one row of data.' };
+  }
+
+  // Header validation
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  const expectedHeaders = schema.map(s => s.name);
+  if (headers.length !== expectedHeaders.length || !headers.every((h, i) => h === expectedHeaders[i])) {
+    const missing = expectedHeaders.filter(h => !headers.includes(h));
+    const extra = headers.filter(h => !expectedHeaders.includes(h));
+    let errorMessage = 'The column headers in your file do not match what is expected.';
+    if (missing.length > 0) {
+      errorMessage += `\n\nMissing columns: ${missing.join(', ')}`;
+    }
+    if (extra.length > 0) {
+      errorMessage += `\n\nUnexpected columns: ${extra.join(', ')}`;
+    }
+    errorMessage += `\n\nPlease check that your file has the correct columns in the right order.`;
+    return { success: false, message: errorMessage };
+  }
+
+  // Row validation (first 5 data rows)
+  const rowsToValidate = lines.slice(1, 6);
+  for (let i = 0; i < rowsToValidate.length; i++) {
+    const rowNumber = i + 2;
+    const values = rowsToValidate[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+
+    if (values.length !== schema.length) {
+      return {
+        success: false,
+        message: `Row ${rowNumber} has the wrong number of columns. We expected ${schema.length} columns but found ${values.length}. Please check that row for missing or extra commas.`,
+      };
+    }
+
+    for (let j = 0; j < schema.length; j++) {
+      const value = values[j];
+      const fieldSchema = schema[j];
+      if (!validateType(value, fieldSchema)) {
+        const friendlyExpected = friendlyTypeName(fieldSchema.type);
+        const friendlyActual = friendlyValue(value);
+
+        if (value.trim() === '' && fieldSchema.required !== false) {
+          return {
+            success: false,
+            message: `Row ${rowNumber}, column "${fieldSchema.name}": This field is required but was left blank. Please fill in a value.`,
+          };
+        }
+
+        return {
+          success: false,
+          message: `Row ${rowNumber}, column "${fieldSchema.name}": Expected ${friendlyExpected} but found ${friendlyActual}. Please correct this value.`,
+        };
+      }
+    }
+  }
+
+  try {
+    const storage = new Storage();
+    const destination = `uploads/${fileType}/${Date.now()}-${file.name}`;
+
+    await storage.bucket(bucketName).file(destination).save(buffer, {
+      metadata: {
+        contentType: 'text/csv',
+        metadata: {
+          'veda-file-type': fileType,
+          'veda-upload-timestamp': new Date().toISOString(),
+          'veda-scan-status': 'pending',
+        },
+      },
+    });
+
+    const rowCount = lines.length - 1; // subtract header row
+    const friendlyFileType = fileType.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    return { success: true, message: `${friendlyFileType} successfully uploaded — ${rowCount} row${rowCount !== 1 ? 's' : ''}.`, gcsPath: destination };
+  } catch (error: unknown) {
+    console.error('Error uploading to GCS:', error);
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('Could not refresh access token')) {
+      return {
+        success: false,
+        message: 'There was a temporary problem connecting to the file storage service. Please wait a moment and try again.',
+      };
+    }
+
+    return {
+      success: false,
+      message: 'There was a problem uploading your file. Please try again. If the problem continues, contact your administrator.',
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public server action
+// ---------------------------------------------------------------------------
+
+export async function uploadFile(formData: FormData): Promise<{ success: boolean; message: string }> {
+  const file = formData.get('file') as File;
+  const fileType = formData.get('fileType') as string;
+  const fileName = file?.name ?? 'unknown';
+  const electionAuthorityName = formData.get('electionAuthorityName') as string | null;
+  const electionAuthorityType = formData.get('electionAuthorityType') as string | null;
+  const amendmentNotes = formData.get('amendmentNotes') as string | null;
+  const electionEventId = formData.get('electionEventId') as string | null;
+
+  const result = await performUpload(file, fileType);
+
+  // Persist to BigQuery — never blocks or fails the response
+  await logSubmission(fileName, fileType, result.success, result.message, electionEventId ?? undefined);
+
+  // Track file version on successful upload
+  if (result.success && result.gcsPath && electionAuthorityName) {
+    await createFileVersion(
+      fileType,
+      fileName,
+      result.gcsPath,
+      electionAuthorityName,
+      electionAuthorityType ?? '',
+      amendmentNotes ?? '',
+      electionEventId ?? undefined,
+    );
+
+    // Update election event file status
+    if (electionEventId) {
+      await updateElectionEventFileStatus(electionEventId, fileType, {
+        uploaded: true,
+        fileName,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: CURRENT_USER,
+        version: 1,
+        gcsPath: result.gcsPath,
+      });
+    }
+  }
+
+  return result;
+}

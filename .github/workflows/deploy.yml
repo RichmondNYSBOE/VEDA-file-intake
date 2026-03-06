@@ -1,0 +1,79 @@
+name: Deploy to Cloud Run
+
+on:
+  # Auto-deploy to UAT on push to main
+  push:
+    branches: [main]
+
+  # Manual trigger for Production (or re-deploy to UAT)
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'uat'
+        type: choice
+        options:
+          - uat
+          - prod
+
+# Prevent simultaneous deploys to the same environment
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'uat' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (${{ github.event.inputs.environment || 'uat' }})
+    runs-on: ubuntu-latest
+
+    environment:
+      name: ${{ github.event.inputs.environment || 'uat' }}
+      url: ${{ steps.deploy.outputs.url }}
+
+    permissions:
+      contents: read
+      id-token: write  # Required for Workload Identity Federation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Authenticate Docker to Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t "${{ vars.ARTIFACT_REGISTRY }}:${{ github.sha }}" \
+            -t "${{ vars.ARTIFACT_REGISTRY }}:latest" \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push "${{ vars.ARTIFACT_REGISTRY }}:${{ github.sha }}"
+          docker push "${{ vars.ARTIFACT_REGISTRY }}:latest"
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ vars.CLOUD_RUN_SERVICE }}
+          region: ${{ vars.REGION }}
+          image: ${{ vars.ARTIFACT_REGISTRY }}:${{ github.sha }}
+          env_vars: |
+            GCLOUD_PROJECT=${{ vars.GCP_PROJECT_ID }}
+            GCS_BUCKET_NAME=${{ vars.GCS_BUCKET_NAME }}
+
+      - name: Output deployed URL
+        run: echo "### Deployed to ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
