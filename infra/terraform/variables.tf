@@ -61,3 +61,8 @@ variable "scanner_max_instances" {
   type        = number
   default     = 3
 }
+
+variable "project_number" {
+  description = "GCP project number (used to derive the default Cloud Build service account)"
+  type        = string
+}
