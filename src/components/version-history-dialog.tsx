@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Version History Dialog. Shows all uploaded versions of a specific file type
+ * for an authority, with the active version highlighted. Displays version
+ * numbers, file names, timestamps, and amendment notes.
+ */
+
 import { useEffect, useState } from "react";
 import { getFileVersions, type FileVersionEntry } from "@/app/actions";
 import {

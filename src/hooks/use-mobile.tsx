@@ -1,3 +1,9 @@
+/**
+ * Mobile detection hook.
+ * Uses a media query listener to reactively detect whether the viewport width
+ * is below the mobile breakpoint (768px). Returns a boolean indicating mobile state.
+ */
+
 import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768

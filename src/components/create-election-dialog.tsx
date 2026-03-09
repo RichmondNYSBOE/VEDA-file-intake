@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Dialog form for creating a new election event. Collects election date, type,
+ * certification date, and filing type (original/amended). Auto-generates the
+ * election name using the deriveElectionName() function and provides a
+ * copy-to-clipboard button. Validates for duplicate event names before creating.
+ */
+
 import { useState } from "react";
 import {
   Dialog,

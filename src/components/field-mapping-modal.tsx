@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Field Mapping Modal dialog. Presents a side-by-side view of expected schema
+ * fields vs. uploaded column headers, letting users manually assign (or correct)
+ * column mappings. Problematic fields (fuzzy or unmatched) are sorted to the
+ * top. Validates that all fields are mapped with no duplicates before allowing
+ * confirmation.
+ */
+
 import { useState, useMemo } from "react";
 import type { FieldSchema } from "@/lib/file-schemas";
 import type { MatchResult, MatchConfidence } from "@/lib/header-matching";

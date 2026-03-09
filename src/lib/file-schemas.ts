@@ -1,5 +1,14 @@
+/**
+ * @file CSV validation schemas for the 4 election data file types.
+ *
+ * Each schema defines the exact column names, data types, and required/optional
+ * status. Also includes {@link headerAliases} for fuzzy column matching.
+ */
+
+/** Allowed data types for a CSV column value. */
 export type FieldType = "string" | "number" | "boolean" | "date";
 
+/** Definition of a single column within a file schema. */
 export interface FieldSchema {
   name: string;
   type: FieldType;
@@ -129,6 +138,13 @@ export const headerAliases: Record<string, Record<string, string>> = {
   },
 };
 
+/**
+ * Complete column schemas for each of the 4 election data file types.
+ *
+ * Keyed by file type identifier (e.g. "election-results", "elections",
+ * "voter-history", "poll-sites"). Each entry is an ordered array of
+ * {@link FieldSchema} objects defining the canonical column list.
+ */
 export const fileSchemas: Record<string, FieldSchema[]> = {
   "election-results": [
     { name: "Election_Name", type: "string", required: true },

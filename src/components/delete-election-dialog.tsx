@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Confirmation dialog for deleting an election event. Warns the user if files
+ * have been uploaded and that deletion is irreversible. Calls the
+ * deleteElectionEvent server action.
+ */
+
 import { useState } from "react";
 import { deleteElectionEvent, type ElectionEvent } from "@/app/actions";
 import {

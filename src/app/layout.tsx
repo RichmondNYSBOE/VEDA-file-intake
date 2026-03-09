@@ -1,3 +1,9 @@
+/**
+ * @file Root layout for the VoteVault application.
+ * Wraps all pages with the Inter font (via Google Fonts), global styles,
+ * SEO metadata, and the Toaster provider for toast notifications.
+ */
+
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster"

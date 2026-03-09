@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Dropdown selector for switching between election authorities. Renders in the
+ * navigation bar. Includes an 'All Authorities (Combined)' option when multiple
+ * authorities are available.
+ */
+
 import { Building2, LayoutGrid } from "lucide-react";
 import { useElectionAuthority, ALL_AUTHORITIES } from "@/components/election-authority-context";
 import {

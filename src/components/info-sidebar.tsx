@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Informational sidebar displayed alongside the dashboard. Shows the current
+ * user profile, FAQ links, data dictionary reference, miscellaneous files
+ * section, and contact information for the NYS Board of Elections.
+ */
+
 import { User, HelpCircle, BookOpen, FolderOpen, Phone, Mail } from "lucide-react";
 import {
   Card,

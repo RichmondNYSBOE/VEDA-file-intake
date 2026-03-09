@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Upload progress bar component. Displays a visual progress indicator showing
+ * how many of the required files have been uploaded. Shows a success banner
+ * when all files are complete.
+ */
+
 import { CheckCircle2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 

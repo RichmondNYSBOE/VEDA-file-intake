@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Multi-step upload wizard for submitting election data files. Guides users
+ * through uploading 4 file types (poll-sites, election-results, voter-history,
+ * district-maps) with: drag-and-drop file selection, paste-from-spreadsheet
+ * support, automatic column header matching and reordering, data preview,
+ * amendment acknowledgment for re-uploads, and per-step progress tracking.
+ */
+
 import { useState, useRef, useCallback, useEffect, useTransition, type DragEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";

@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Submission Log component. Renders a scrollable list of file upload attempts
+ * (successes and failures) with timestamps, file names, status messages, and
+ * uploader information. Used as an audit trail.
+ */
+
 import { CheckCircle2, XCircle, ScrollText, User } from "lucide-react";
 import {
   Card,

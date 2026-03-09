@@ -1,6 +1,15 @@
+/**
+ * @file Shapefile-to-GeoJSON conversion utilities.
+ *
+ * Handles: (1) .zip archives containing shapefile bundles (.shp, .dbf, .prj) --
+ * extracts and converts to GeoJSON FeatureCollection; (2) .geojson/.json files
+ * -- validates and normalizes to FeatureCollection format.
+ */
+
 import JSZip from "jszip";
 import * as shapefile from "shapefile";
 
+/** Result of a shapefile conversion or GeoJSON validation operation. */
 export interface ConversionResult {
   success: boolean;
   geojson?: GeoJSON.FeatureCollection;

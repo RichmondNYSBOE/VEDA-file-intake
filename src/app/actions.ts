@@ -1,3 +1,11 @@
+/**
+ * @file Server actions module containing all server-side mutations and queries.
+ *
+ * Responsibilities include: file upload and validation (CSV schemas, shapefile-to-GeoJSON
+ * conversion), submission audit logging, file version tracking, election event CRUD,
+ * and no-elections certifications. All BigQuery tables are auto-provisioned via ensureSchema().
+ */
+
 'use server'
 
 import { randomUUID } from 'crypto';
@@ -79,6 +87,7 @@ function table(name: string): string {
 // BigQuery helpers — Submission logs
 // ---------------------------------------------------------------------------
 
+/** Inserts an audit log entry into BigQuery's submission_logs table. */
 async function logSubmission(
   fileName: string,
   fileType: string,
@@ -105,6 +114,7 @@ async function logSubmission(
   }
 }
 
+/** Fetches the most recent 50 submission log entries, optionally filtered by election event. */
 export async function getSubmissionLogs(electionEventId?: string): Promise<SubmissionLogEntry[]> {
   try {
     await ensureSchema();
@@ -141,6 +151,7 @@ export async function getSubmissionLogs(electionEventId?: string): Promise<Submi
 // File version tracking
 // ---------------------------------------------------------------------------
 
+/** Creates a new version record for a file, deactivating all prior versions for that file type and authority. */
 async function createFileVersion(
   fileType: string,
   fileName: string,
@@ -203,6 +214,7 @@ async function createFileVersion(
   }
 }
 
+/** Retrieves all versions (active and inactive) of a file type for an authority. */
 export async function getFileVersions(
   fileType: string,
   electionAuthorityName: string,
@@ -235,6 +247,7 @@ export async function getFileVersions(
   }
 }
 
+/** Retrieves only the currently active file versions for an authority. */
 export async function getAllFileVersions(
   electionAuthorityName: string,
 ): Promise<FileVersionEntry[]> {
@@ -315,6 +328,7 @@ function serializeFilesRecord(
   }));
 }
 
+/** Creates a new election event after checking for duplicates by name and authority. */
 export async function createElectionEvent(data: {
   date: string;
   electionType: string;
@@ -375,6 +389,7 @@ export async function createElectionEvent(data: {
   }
 }
 
+/** Fetches all election events for an authority, ordered by creation date descending. */
 export async function getElectionEvents(
   electionAuthorityName: string,
 ): Promise<ElectionEvent[]> {
@@ -403,6 +418,7 @@ export async function getElectionEvents(
   }
 }
 
+/** Fetches a single election event by its ID, or null if not found. */
 export async function getElectionEvent(id: string): Promise<ElectionEvent | null> {
   try {
     await ensureSchema();
@@ -429,6 +445,7 @@ export async function getElectionEvent(id: string): Promise<ElectionEvent | null
   }
 }
 
+/** Updates the upload status of one file type within an election event. */
 async function updateElectionEventFileStatus(
   electionEventId: string,
   fileType: string,
@@ -475,6 +492,7 @@ async function updateElectionEventFileStatus(
 // Delete Election Event
 // ---------------------------------------------------------------------------
 
+/** Deletes an election event and deactivates all related file versions. */
 export async function deleteElectionEvent(
   id: string,
 ): Promise<{ success: boolean; message: string }> {
@@ -516,6 +534,7 @@ export async function deleteElectionEvent(
 // No Elections Certifications
 // ---------------------------------------------------------------------------
 
+/** Records a "no elections" certification for a given year and authority, checking for duplicates. */
 export async function certifyNoElections(data: {
   year: number;
   electionAuthorityName: string;
@@ -561,6 +580,7 @@ export async function certifyNoElections(data: {
   }
 }
 
+/** Fetches all no-elections certifications for an authority. */
 export async function getNoElectionsCertifications(
   electionAuthorityName: string,
 ): Promise<NoElectionsCertification[]> {
@@ -614,6 +634,7 @@ function friendlyValue(value: string): string {
   return `"${value}"`;
 }
 
+/** Validates a cell value against a field schema's expected type (string, number, boolean, date). */
 function validateType(value: string, fieldSchema: FieldSchema): boolean {
   const trimmedValue = value.trim();
 
@@ -653,6 +674,7 @@ function validateType(value: string, fieldSchema: FieldSchema): boolean {
 // Upload logic
 // ---------------------------------------------------------------------------
 
+/** Core upload logic: validates the file (CSV schema or shapefile), uploads to GCS, and returns the result. */
 async function performUpload(
   file: File,
   fileType: string,
@@ -869,6 +891,7 @@ async function performUpload(
 // Public server action
 // ---------------------------------------------------------------------------
 
+/** Public server action entry point called by client components to upload a file. */
 export async function uploadFile(formData: FormData): Promise<{ success: boolean; message: string }> {
   const file = formData.get('file') as File;
   const fileType = formData.get('fileType') as string;

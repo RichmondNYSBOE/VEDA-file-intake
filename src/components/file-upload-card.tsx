@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Standalone file upload card component (legacy — the upload-wizard is now the
+ * primary upload interface). Provides a card-based UI for uploading a single CSV
+ * file type with drag-and-drop, automatic header analysis, column mapping modal
+ * integration, version display, and amendment notes.
+ */
+
 import { useState, useRef, useTransition, useEffect, useCallback, type DragEvent, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";

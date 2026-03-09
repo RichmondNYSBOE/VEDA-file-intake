@@ -1,3 +1,10 @@
+/**
+ * @file Main landing page for the VoteVault application.
+ * Renders the NYS Banner, header with logo/title, a navigation bar with
+ * the ElectionAuthoritySelector, the Dashboard, and a footer.
+ * All content below the header is wrapped in ElectionAuthorityProvider.
+ */
+
 import Image from "next/image";
 import { NYSBanner } from "@/components/nys-banner";
 import { Dashboard } from "@/components/dashboard";

@@ -1,6 +1,13 @@
 "use client"
 
-// Inspired by react-hot-toast library
+/**
+ * Toast notification hook (inspired by react-hot-toast).
+ * Manages a global toast state using a reducer pattern with an in-memory store
+ * and listener subscription model. Limits display to 1 toast at a time (TOAST_LIMIT).
+ * Provides toast(), dismiss(), and useToast() for showing, dismissing, and
+ * subscribing to toast state.
+ */
+
 import * as React from "react"
 
 import type {

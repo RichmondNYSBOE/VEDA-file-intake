@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * React Context for managing the currently selected election authority. Provides
+ * the list of available authorities, the selected authority, and a setter. Also
+ * supports an 'All Authorities' combined view via the ALL_AUTHORITIES sentinel value.
+ */
+
 import { createContext, useContext, useState, type ReactNode } from "react";
 
 export interface ElectionAuthority {

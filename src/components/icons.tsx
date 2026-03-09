@@ -1,3 +1,7 @@
+/**
+ * Custom SVG icon components for the VoteVault brand.
+ */
+
 import type { SVGProps } from "react";
 
 export const VoteVaultIcon = (props: SVGProps<SVGSVGElement>) => (
