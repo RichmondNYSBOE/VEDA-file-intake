@@ -29,7 +29,7 @@ export interface LogEntry {
 const FILE_TYPE_LABELS: Record<string, string> = {
   elections: "Elections Data",
   "election-results": "Election Results",
-  "voter-history": "Voter History",
+  "voter-information": "Voter Information",
   "poll-sites": "Poll Sites",
   "district-maps": "District Maps",
 };

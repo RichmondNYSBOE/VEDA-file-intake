@@ -24,9 +24,9 @@ const FILE_TYPES = [
     icon: <Table2 className="h-6 w-6 text-primary" />,
   },
   {
-    title: "Voter History",
-    description: "Upload CSV files of voter participation and history records.",
-    fileType: "voter-history",
+    title: "Voter Information",
+    description: "Upload CSV files of voter participation and information records.",
+    fileType: "voter-information",
     icon: <Users className="h-6 w-6 text-primary" />,
   },
   {
