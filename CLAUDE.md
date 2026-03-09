@@ -21,21 +21,49 @@ npm run lint                     # Run ESLint
 ```
 src/
   app/
-    page.tsx          # Home page — file upload cards grid
-    layout.tsx        # Root layout, metadata, Toaster provider
-    actions.ts        # Server actions (uploadFile to GCS)
+    page.tsx              # Main page — NYS banner, dashboard, election selector
+    layout.tsx            # Root layout, metadata, Inter font, Toaster provider
+    actions.ts            # Server actions — upload, validation, CRUD, audit logging
+    globals.css           # CSS variables, theme tokens (light/dark)
   components/
-    file-upload-card.tsx  # Main interactive upload component
-    icons.tsx             # Custom VoteVault icon
-    ui/                   # shadcn/ui component library (26+ components)
+    dashboard.tsx             # Main dashboard UI
+    upload-wizard.tsx         # Primary upload interface (step-by-step)
+    file-upload-card.tsx      # Drag-and-drop file upload component
+    upload-dashboard.tsx      # Upload dashboard view
+    upload-history.tsx        # Upload history / submission log
+    data-preview.tsx          # CSV data preview table
+    field-mapping-modal.tsx   # Column mapping modal
+    submission-log.tsx        # Audit trail for submissions
+    nys-banner.tsx            # NYS official branding banner
+    election-authority-context.tsx   # Election authority React context
+    election-authority-selector.tsx  # Authority selector dropdown
+    create-election-dialog.tsx      # Create election event dialog
+    delete-election-dialog.tsx      # Delete election confirmation
+    no-elections-dialog.tsx         # No-elections certification dialog
+    version-history-dialog.tsx      # File version history viewer
+    info-sidebar.tsx          # Information sidebar
+    upload-progress-bar.tsx   # Upload progress indicator
+    icons.tsx                 # Custom VoteVault icon
+    ui/                       # shadcn/ui component library (26+ components)
   hooks/
-    use-toast.ts      # Toast notification hook
-    use-mobile.tsx    # Mobile detection hook
+    use-toast.ts          # Toast notification hook
+    use-mobile.tsx        # Mobile detection hook
   lib/
-    file-schemas.ts   # CSV validation schemas for all 4 file types
-    utils.ts          # cn() classname utility
+    file-schemas.ts       # Zod schemas for all 4 CSV file types
+    file-parser.ts        # CSV parsing utilities
+    header-matching.ts    # Fuzzy column header matching / normalization
+    election-types.ts     # Election data TypeScript types
+    bigquery.ts           # BigQuery client and auto-schema provisioning
+    firestore.ts          # Firestore database operations
+    shapefile-converter.ts # Shapefile → GeoJSON conversion
+    utils.ts              # cn() classname merge utility
+  types/
+    shapefile.d.ts        # TypeScript declarations for shapefile lib
+infra/
+  malware-scanner/        # ClamAV-based malware scanning service (Cloud Run)
+  terraform/              # Infrastructure as Code (GCP resources)
 docs/
-  blueprint.md        # Design guidelines, color palette, typography
+  blueprint.md            # Design guidelines, color palette, typography
 ```
 
 ### Key Patterns
@@ -109,19 +137,25 @@ Validation constraints:
 ### Environment Variables
 
 - `GCS_BUCKET_NAME` — required, Google Cloud Storage bucket name
-- Google Cloud service account credentials must be available at runtime
+- `GCLOUD_PROJECT` — required in deployed environments, GCP project ID
+- Google Cloud service account credentials must be available at runtime (via `GOOGLE_APPLICATION_CREDENTIALS` or Cloud Run metadata server)
 
 ### Deployment
 
-- **Primary:** Firebase App Hosting (`apphosting.yaml`) — max 1 instance, auto-scaling disabled
+- **Primary:** Google Cloud Run via GitHub Actions (`.github/workflows/deploy.yml`)
+- UAT auto-deploys on push to `main`; production deploys are manual (`workflow_dispatch`)
 - **Docker:** Multi-stage build targeting Node 20 Alpine, port 8080
-- Firebase Studio (`.idx/`) configured for cloud-based development
+- **Cloud Build:** Alternative pipeline via `cloudbuild.yaml` (builds app + malware scanner)
+- **Firebase App Hosting:** Legacy config in `apphosting.yaml` (max 1 instance)
 
 ### Cloud Services
 
-- **Google Cloud Storage:** File storage destination (`@google-cloud/storage`)
-- **Google BigQuery:** Data querying (`@google-cloud/bigquery`)
-- **Firebase Admin SDK:** Backend auth and services (`firebase-admin`)
+- **Cloud Run:** Hosts the Next.js app and the malware scanner service
+- **Google Cloud Storage:** File storage — interim, clean, and quarantine buckets
+- **Google BigQuery:** Validated election data storage and querying (`@google-cloud/bigquery`)
+- **Firestore:** Submission logs, election events, file versions, certifications (`firebase-admin`)
+- **Artifact Registry:** Docker image storage
+- **Eventarc:** Triggers malware scanning on new file uploads to GCS
 
 ## Git Workflow
 
@@ -133,5 +167,5 @@ Validation constraints:
 
 - `npm install` requires `--legacy-peer-deps` flag — will fail without it
 - TypeScript and ESLint errors are **ignored during production builds** (`next.config.mjs`) — do not rely on the build to catch type errors; run `npx tsc --noEmit` separately
-- Firebase emulators are disabled in dev config — the app uses production backend services
+- The app connects to production GCP services in dev — there are no local emulators in active use
 - No test framework is currently configured
