@@ -1,8 +1,18 @@
+/**
+ * @file BigQuery client initialization and dataset schema provisioning.
+ *
+ * Initializes the BigQuery client using project credentials from the environment
+ * and defines the operational dataset schema. The {@link ensureSchema} function
+ * auto-provisions the dataset and 4 tables (election_events, submission_logs,
+ * file_versions, no_elections_certifications) on first call.
+ */
+
 import { BigQuery } from "@google-cloud/bigquery";
 
 const projectId =
   process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
 
+/** Singleton BigQuery client instance, configured from environment variables. */
 export const bq = new BigQuery(projectId ? { projectId } : undefined);
 
 /**
@@ -17,6 +27,17 @@ export const DATASET = process.env.BQ_DATASET ?? "votevault";
  */
 let _initialized = false;
 
+/**
+ * Lazily provisions the BigQuery dataset and all required tables on first call.
+ *
+ * Creates the dataset (if missing) and the following tables:
+ * - `election_events` -- election metadata and associated file records
+ * - `submission_logs` -- audit trail of file upload attempts
+ * - `file_versions`   -- versioned file upload history per election
+ * - `no_elections_certifications` -- records when an authority certifies no elections held
+ *
+ * Subsequent calls are no-ops (guarded by an in-memory flag).
+ */
 export async function ensureSchema(): Promise<void> {
   if (_initialized) return;
 

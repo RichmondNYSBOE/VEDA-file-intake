@@ -1,3 +1,10 @@
+/**
+ * @file Multi-format file parser that normalizes CSV, Excel (.xlsx/.xls), JSON,
+ * and pasted tab-delimited data into a uniform {@link ParsedData} structure
+ * (headers + rows). Also provides {@link toCsvString} to serialize back to CSV
+ * for upload.
+ */
+
 import * as XLSX from "xlsx";
 
 /**

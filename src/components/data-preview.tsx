@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Data Preview component. Renders a tabular preview of parsed file data (CSV,
+ * Excel, JSON, or pasted) showing column headers with types, row numbers, and
+ * expandable row display (5 -> 20 rows). Applies column reordering when a
+ * mapping has been confirmed.
+ */
+
 import { useState } from "react";
 import type { ParsedData } from "@/lib/file-parser";
 import type { FieldSchema } from "@/lib/file-schemas";

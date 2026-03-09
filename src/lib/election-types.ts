@@ -1,3 +1,8 @@
+/**
+ * @file Election type definitions, authority-to-category mappings, election name
+ * derivation logic, and the upload wizard step configuration.
+ */
+
 export interface ElectionTypeOption {
   value: string;
   label: string;

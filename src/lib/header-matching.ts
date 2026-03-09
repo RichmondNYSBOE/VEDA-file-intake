@@ -1,3 +1,13 @@
+/**
+ * @file Fuzzy column header matching engine.
+ *
+ * Compares uploaded file headers against expected schema fields using a 4-pass
+ * strategy: (1) exact string match, (2) normalized match (case/separator
+ * insensitive), (3) alias match (from {@link headerAliases}), (4) fuzzy
+ * Levenshtein match. Returns a {@link MatchResult} indicating whether headers
+ * matched exactly, were auto-resolved, need user review, or failed completely.
+ */
+
 import { type FieldSchema, headerAliases } from "@/lib/file-schemas";
 
 // ---------------------------------------------------------------------------

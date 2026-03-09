@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * New York State official website banner. Displays the '.gov' site notice with
+ * an expandable section explaining what .gov and HTTPS mean. Follows the
+ * standard US government website banner pattern.
+ */
+
 import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 

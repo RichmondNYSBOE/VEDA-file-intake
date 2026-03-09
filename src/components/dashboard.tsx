@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Main Dashboard component. Orchestrates the primary user interface: displays
+ * election events with compliance badges, no-elections certifications, and
+ * provides navigation to the upload wizard and history views. Supports both
+ * single-authority and combined 'all authorities' views. Contains helper
+ * components: ComplianceBadge, FileStatusDots, ElectionEventCard, CertificationCard.
+ */
+
 import { useState, useEffect, useCallback } from "react";
 import {
   getElectionEvents,

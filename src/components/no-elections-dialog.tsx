@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Dialog form for certifying that an election authority held no elections in a
+ * given year. Offers the current year and two prior years. Records the
+ * certification via the certifyNoElections server action.
+ */
+
 import { useState } from "react";
 import {
   Dialog,

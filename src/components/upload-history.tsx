@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Upload History view. Displays all election events for the selected authority
+ * in expandable cards, each showing file upload status and submission logs.
+ * Replaces the dashboard when the user clicks 'View History'.
+ */
+
 import { useState, useEffect, useCallback } from "react";
 import {
   getElectionEvents,
