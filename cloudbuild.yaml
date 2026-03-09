@@ -94,6 +94,12 @@ steps:
     args:
       - '-c'
       - |
+        if [ -z "$_SCANNER_SA_EMAIL" ]; then
+          echo "ERROR: _SCANNER_SA_EMAIL substitution variable is not set."
+          echo "Configure it in Cloud Build trigger settings with the scanner service account email."
+          exit 1
+        fi
+
         # Delete any existing trigger so we can recreate with exact filters
         gcloud eventarc triggers delete veda-malware-scan-trigger \
           --location=us-east1 --quiet 2>/dev/null || true
@@ -104,7 +110,7 @@ steps:
           --destination-run-region=us-east1 \
           --event-filters="type=google.cloud.storage.object.v1.finalized" \
           --event-filters="bucket=nysboe-veda-interim-uploads" \
-          --service-account=$_SCANNER_SA_EMAIL
+          --service-account="$_SCANNER_SA_EMAIL"
 
 images:
   - 'us-east1-docker.pkg.dev/$PROJECT_ID/veda-file-intake/app:$COMMIT_SHA'
