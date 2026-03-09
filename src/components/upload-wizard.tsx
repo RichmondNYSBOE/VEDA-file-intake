@@ -36,6 +36,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -318,20 +329,37 @@ function AttestationOptions({
               <p className="text-xs text-muted-foreground mb-3">
                 If your poll site locations have not changed since the previous election, you can attest to that instead of uploading a new file.
               </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isAttesting}
-                onClick={() => onAttest("poll-sites", "no-change")}
-                className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
-              >
-                {isAttesting ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
-                ) : (
-                  <><ShieldCheck className="h-3.5 w-3.5" />Attest — No Changes</>
-                )}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isAttesting}
+                    className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                  >
+                    {isAttesting ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
+                    ) : (
+                      <><ShieldCheck className="h-3.5 w-3.5" />Attest — No Changes</>
+                    )}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Confirm Poll Sites Attestation</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      You are attesting that your poll site locations have <strong className="text-foreground">not changed</strong> since the previous election. This attestation will be recorded and is publicly visible for compliance tracking. Are you sure you want to proceed?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => onAttest("poll-sites", "no-change")}>
+                      Yes, Submit Attestation
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         </CardContent>
@@ -358,20 +386,37 @@ function AttestationOptions({
                   <p className="text-xs text-muted-foreground mb-3">
                     If your district maps have not changed since the previous election, you can attest to that instead of uploading a new file.
                   </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={isAttesting}
-                    onClick={() => onAttest("district-maps", "no-change")}
-                    className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
-                  >
-                    {isAttesting ? (
-                      <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
-                    ) : (
-                      <><ShieldCheck className="h-3.5 w-3.5" />Attest — No Changes</>
-                    )}
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isAttesting}
+                        className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                      >
+                        {isAttesting ? (
+                          <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
+                        ) : (
+                          <><ShieldCheck className="h-3.5 w-3.5" />Attest — No Changes</>
+                        )}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Confirm District Maps Attestation</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          You are attesting that your district maps have <strong className="text-foreground">not changed</strong> since the previous election. This attestation will be recorded and is publicly visible for compliance tracking. Are you sure you want to proceed?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => onAttest("district-maps", "no-change")}>
+                          Yes, Submit Attestation
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             </CardContent>
@@ -390,20 +435,37 @@ function AttestationOptions({
                   <p className="text-xs text-muted-foreground mb-3">
                     If the State GEO maps are accurate and up to date for your jurisdiction, you can attest to that instead of uploading your own maps.
                   </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={isAttesting}
-                    onClick={() => onAttest("district-maps", "state-geo-accurate")}
-                    className="gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-100 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-900/30"
-                  >
-                    {isAttesting ? (
-                      <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
-                    ) : (
-                      <><ShieldCheck className="h-3.5 w-3.5" />Attest — State GEO Maps Accurate</>
-                    )}
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isAttesting}
+                        className="gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-100 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-900/30"
+                      >
+                        {isAttesting ? (
+                          <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
+                        ) : (
+                          <><ShieldCheck className="h-3.5 w-3.5" />Attest — State GEO Maps Accurate</>
+                        )}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Confirm State GEO Maps Attestation</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          You are attesting that the State GEO maps are <strong className="text-foreground">accurate and up to date</strong> for your jurisdiction. This attestation will be recorded and is publicly visible for compliance tracking. Are you sure you want to proceed?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => onAttest("district-maps", "state-geo-accurate")}>
+                          Yes, Submit Attestation
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             </CardContent>
