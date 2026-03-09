@@ -144,5 +144,25 @@ export async function ensureSchema(): Promise<void> {
     });
   }
 
+  // --- file_attestations ---
+  const fileAttestationsTable = dataset.table("file_attestations");
+  const [faExists] = await fileAttestationsTable.exists();
+  if (!faExists) {
+    await dataset.createTable("file_attestations", {
+      schema: {
+        fields: [
+          { name: "id", type: "STRING", mode: "REQUIRED" },
+          { name: "election_event_id", type: "STRING" },
+          { name: "file_type", type: "STRING" },
+          { name: "attestation_type", type: "STRING" },
+          { name: "election_authority_name", type: "STRING" },
+          { name: "election_authority_type", type: "STRING" },
+          { name: "attested_at", type: "TIMESTAMP" },
+          { name: "attested_by", type: "STRING" },
+        ],
+      },
+    });
+  }
+
   _initialized = true;
 }

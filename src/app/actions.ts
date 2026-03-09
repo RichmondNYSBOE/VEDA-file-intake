@@ -607,6 +607,172 @@ export async function getNoElectionsCertifications(
 }
 
 // ---------------------------------------------------------------------------
+// File Attestations
+// ---------------------------------------------------------------------------
+
+/** Attestation types for file requirements that can be satisfied without upload. */
+export type AttestationType = "no-change" | "state-geo-accurate";
+
+export interface FileAttestation {
+  id: string;
+  electionEventId: string;
+  fileType: string;
+  attestationType: AttestationType;
+  electionAuthorityName: string;
+  electionAuthorityType: string;
+  attestedAt: string;
+  attestedBy: string;
+}
+
+/**
+ * Checks whether an authority is eligible to attest for a given file type
+ * instead of uploading a new file.
+ *
+ * - poll-sites "no-change": requires a prior poll-sites upload for any other event
+ * - district-maps "no-change": requires a prior district-maps upload OR a prior
+ *   "state-geo-accurate" attestation for any other event
+ * - district-maps "state-geo-accurate": always eligible (no prior submission needed)
+ */
+export async function checkAttestationEligibility(
+  fileType: string,
+  attestationType: AttestationType,
+  electionAuthorityName: string,
+  currentElectionEventId: string,
+): Promise<{ eligible: boolean }> {
+  try {
+    await ensureSchema();
+
+    // State GEO accuracy attestation is always available
+    if (fileType === "district-maps" && attestationType === "state-geo-accurate") {
+      return { eligible: true };
+    }
+
+    if (fileType === "poll-sites" && attestationType === "no-change") {
+      // Check if authority has a previous poll-sites upload for another event
+      const query = `
+        SELECT 1 FROM ${table('election_events')} e,
+        UNNEST(e.files) AS f
+        WHERE e.election_authority_name = @authority
+          AND e.id != @currentEventId
+          AND f.file_type = 'poll-sites'
+          AND f.uploaded = TRUE
+        LIMIT 1
+      `;
+      const [rows] = await bq.query({
+        query,
+        params: { authority: electionAuthorityName, currentEventId: currentElectionEventId },
+      });
+      return { eligible: (rows as unknown[]).length > 0 };
+    }
+
+    if (fileType === "district-maps" && attestationType === "no-change") {
+      // Check if authority has a previous district-maps upload for another event
+      const uploadQuery = `
+        SELECT 1 FROM ${table('election_events')} e,
+        UNNEST(e.files) AS f
+        WHERE e.election_authority_name = @authority
+          AND e.id != @currentEventId
+          AND f.file_type = 'district-maps'
+          AND f.uploaded = TRUE
+        LIMIT 1
+      `;
+      const [uploadRows] = await bq.query({
+        query: uploadQuery,
+        params: { authority: electionAuthorityName, currentEventId: currentElectionEventId },
+      });
+      if ((uploadRows as unknown[]).length > 0) return { eligible: true };
+
+      // Check if authority has a previous state-geo-accurate attestation for another event
+      const attestQuery = `
+        SELECT 1 FROM ${table('file_attestations')}
+        WHERE election_authority_name = @authority
+          AND election_event_id != @currentEventId
+          AND file_type = 'district-maps'
+          AND attestation_type = 'state-geo-accurate'
+        LIMIT 1
+      `;
+      const [attestRows] = await bq.query({
+        query: attestQuery,
+        params: { authority: electionAuthorityName, currentEventId: currentElectionEventId },
+      });
+      return { eligible: (attestRows as unknown[]).length > 0 };
+    }
+
+    return { eligible: false };
+  } catch (error) {
+    console.error('Failed to check attestation eligibility:', error);
+    return { eligible: false };
+  }
+}
+
+/**
+ * Records an attestation for a file type within an election event and marks
+ * the file requirement as complete.
+ */
+export async function submitAttestation(data: {
+  electionEventId: string;
+  fileType: string;
+  attestationType: AttestationType;
+  electionAuthorityName: string;
+  electionAuthorityType: string;
+}): Promise<{ success: boolean; message: string }> {
+  try {
+    await ensureSchema();
+
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    // Insert attestation record
+    const row = {
+      id,
+      election_event_id: data.electionEventId,
+      file_type: data.fileType,
+      attestation_type: data.attestationType,
+      election_authority_name: data.electionAuthorityName,
+      election_authority_type: data.electionAuthorityType,
+      attested_at: now,
+      attested_by: CURRENT_USER,
+    };
+    await bq.dataset(DATASET).table('file_attestations').insert([row]);
+
+    // Build a descriptive "file name" for the attestation
+    const attestLabel =
+      data.attestationType === "no-change"
+        ? "Attested — No changes since previous election"
+        : "Attested — State GEO maps are accurate";
+
+    // Mark the file requirement as complete on the election event
+    await updateElectionEventFileStatus(data.electionEventId, data.fileType, {
+      uploaded: true,
+      fileName: attestLabel,
+      uploadedAt: now,
+      uploadedBy: CURRENT_USER,
+    });
+
+    // Log the attestation in submission logs
+    await logSubmission(
+      attestLabel,
+      data.fileType,
+      true,
+      `${data.fileType === "poll-sites" ? "Poll Sites" : "District Maps"} requirement satisfied via attestation.`,
+      data.electionEventId,
+    );
+
+    const friendlyType = data.fileType === "poll-sites" ? "Poll Sites" : "District Maps";
+    return {
+      success: true,
+      message: `${friendlyType} requirement has been satisfied via attestation.`,
+    };
+  } catch (error) {
+    console.error('Failed to submit attestation:', error);
+    return {
+      success: false,
+      message: 'Something went wrong while recording the attestation. Please try again.',
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CSV validation — user-friendly error messages
 // ---------------------------------------------------------------------------
 

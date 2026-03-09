@@ -12,7 +12,15 @@ import { useState, useRef, useCallback, useEffect, useTransition, type DragEvent
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { uploadFile, getSubmissionLogs, type ElectionEvent, type SubmissionLogEntry } from "@/app/actions";
+import {
+  uploadFile,
+  getSubmissionLogs,
+  checkAttestationEligibility,
+  submitAttestation,
+  type ElectionEvent,
+  type SubmissionLogEntry,
+  type AttestationType,
+} from "@/app/actions";
 import { fileSchemas } from "@/lib/file-schemas";
 import {
   matchHeaders,
@@ -52,6 +60,7 @@ import {
   User,
   FileEdit,
   ClipboardPaste,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -109,11 +118,13 @@ function StepIndicator({
   steps,
   currentStep,
   fileStatuses,
+  fileNames,
   onStepClick,
 }: {
   steps: typeof UPLOAD_STEPS;
   currentStep: number;
   fileStatuses: Record<string, boolean>;
+  fileNames: Record<string, string | undefined>;
   onStepClick: (index: number) => void;
 }) {
   return (
@@ -122,6 +133,7 @@ function StepIndicator({
         {steps.map((step, index) => {
           const isUploaded = fileStatuses[step.fileType];
           const isCurrent = index === currentStep;
+          const isAttested = isUploaded && fileNames[step.fileType]?.startsWith("Attested");
 
           return (
             <li key={step.fileType}>
@@ -162,9 +174,14 @@ function StepIndicator({
                 {isUploaded && (
                   <Badge
                     variant="secondary"
-                    className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-xs"
+                    className={cn(
+                      "text-xs",
+                      isAttested
+                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+                    )}
                   >
-                    Uploaded
+                    {isAttested ? "Attested" : "Uploaded"}
                   </Badge>
                 )}
                 {!isUploaded && !isCurrent && (
@@ -271,6 +288,135 @@ function MappingStatusAlerts({
 }
 
 // ---------------------------------------------------------------------------
+// Attestation options panel
+// ---------------------------------------------------------------------------
+
+function AttestationOptions({
+  fileType,
+  eligibility,
+  isAttesting,
+  onAttest,
+}: {
+  fileType: string;
+  eligibility: Record<string, boolean>;
+  isAttesting: boolean;
+  onAttest: (fileType: string, type: AttestationType) => void;
+}) {
+  if (fileType === "poll-sites") {
+    const canAttestNoChange = eligibility["poll-sites:no-change"];
+    if (!canAttestNoChange) return null;
+
+    return (
+      <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/10 dark:border-blue-800">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-semibold mb-1">Attest to Unchanged Poll Sites</h4>
+              <p className="text-xs text-muted-foreground mb-3">
+                If your poll site locations have not changed since the previous election, you can attest to that instead of uploading a new file.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isAttesting}
+                onClick={() => onAttest("poll-sites", "no-change")}
+                className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
+              >
+                {isAttesting ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
+                ) : (
+                  <><ShieldCheck className="h-3.5 w-3.5" />Attest — No Changes</>
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (fileType === "district-maps") {
+    const canAttestNoChange = eligibility["district-maps:no-change"];
+    const canAttestGeo = eligibility["district-maps:state-geo-accurate"];
+    if (!canAttestNoChange && !canAttestGeo) return null;
+
+    return (
+      <div className="space-y-3">
+        {canAttestNoChange && (
+          <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/10 dark:border-blue-800">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-semibold mb-1">Attest to Unchanged Maps</h4>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    If your district maps have not changed since the previous election, you can attest to that instead of uploading a new file.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isAttesting}
+                    onClick={() => onAttest("district-maps", "no-change")}
+                    className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                  >
+                    {isAttesting ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
+                    ) : (
+                      <><ShieldCheck className="h-3.5 w-3.5" />Attest — No Changes</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {canAttestGeo && (
+          <Card className="border-violet-200 bg-violet-50/50 dark:bg-violet-950/10 dark:border-violet-800">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <ShieldCheck className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-semibold mb-1">Attest to State GEO Map Accuracy</h4>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    If the State GEO maps are accurate and up to date for your jurisdiction, you can attest to that instead of uploading your own maps.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isAttesting}
+                    onClick={() => onAttest("district-maps", "state-geo-accurate")}
+                    className="gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-100 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-900/30"
+                  >
+                    {isAttesting ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin" />Submitting...</>
+                    ) : (
+                      <><ShieldCheck className="h-3.5 w-3.5" />Attest — State GEO Maps Accurate</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Main wizard component
 // ---------------------------------------------------------------------------
 
@@ -292,6 +438,8 @@ export function UploadWizard({
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [pasteContent, setPasteContent] = useState("");
   const [inputMode, setInputMode] = useState<"file" | "paste">("file");
+  const [attestationEligibility, setAttestationEligibility] = useState<Record<string, boolean>>({});
+  const [isAttesting, setIsAttesting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -352,6 +500,23 @@ export function UploadWizard({
   useEffect(() => {
     getSubmissionLogs(initialEvent.id).then(setLogs);
   }, [initialEvent.id]);
+
+  // Check attestation eligibility for poll-sites and district-maps
+  useEffect(() => {
+    async function checkEligibility() {
+      const [pollNoChange, mapsNoChange, mapsGeo] = await Promise.all([
+        checkAttestationEligibility("poll-sites", "no-change", electionAuthorityName, initialEvent.id),
+        checkAttestationEligibility("district-maps", "no-change", electionAuthorityName, initialEvent.id),
+        checkAttestationEligibility("district-maps", "state-geo-accurate", electionAuthorityName, initialEvent.id),
+      ]);
+      setAttestationEligibility({
+        "poll-sites:no-change": pollNoChange.eligible,
+        "district-maps:no-change": mapsNoChange.eligible,
+        "district-maps:state-geo-accurate": mapsGeo.eligible,
+      });
+    }
+    checkEligibility();
+  }, [electionAuthorityName, initialEvent.id]);
 
   // Analyze headers from parsed data
   const analyzeData = useCallback(
@@ -564,6 +729,47 @@ export function UploadWizard({
     setCurrentStep(index);
   };
 
+  const handleAttestation = async (fileType: string, attestationType: AttestationType) => {
+    setIsAttesting(true);
+    const result = await submitAttestation({
+      electionEventId: event.id,
+      fileType,
+      attestationType,
+      electionAuthorityName,
+      electionAuthorityType,
+    });
+
+    if (result.success) {
+      toast({ title: "Attestation Recorded", description: result.message });
+      const attestLabel =
+        attestationType === "no-change"
+          ? "Attested — No changes since previous election"
+          : "Attested — State GEO maps are accurate";
+      setEvent((prev) => ({
+        ...prev,
+        files: {
+          ...prev.files,
+          [fileType]: { uploaded: true, fileName: attestLabel, uploadedAt: new Date().toISOString(), uploadedBy: "Ryan Richmond" },
+        },
+      }));
+      setLogs((prev) => [{
+        id: Date.now().toString(),
+        timestamp: new Date().toISOString(),
+        fileName: attestLabel,
+        fileType,
+        success: true,
+        message: result.message,
+        uploadedBy: "Ryan Richmond",
+        electionEventId: event.id,
+      }, ...prev]);
+      const nextIncomplete = UPLOAD_STEPS.findIndex((s, i) => i > currentStep && !(event.files[s.fileType]?.uploaded));
+      if (nextIncomplete !== -1) setCurrentStep(nextIncomplete);
+    } else {
+      toast({ title: "Attestation Failed", description: result.message, variant: "destructive" });
+    }
+    setIsAttesting(false);
+  };
+
   const uploadedCount = UPLOAD_STEPS.filter((s) => event.files[s.fileType]?.uploaded).length;
   const totalCount = UPLOAD_STEPS.length;
   const isStepUploaded = fileStatuses[step.fileType];
@@ -668,7 +874,13 @@ export function UploadWizard({
           <div className="w-full lg:w-64 flex-shrink-0">
             <Card>
               <CardContent className="p-3">
-                <StepIndicator steps={UPLOAD_STEPS} currentStep={currentStep} fileStatuses={fileStatuses} onStepClick={handleStepChange} />
+                <StepIndicator
+                  steps={UPLOAD_STEPS}
+                  currentStep={currentStep}
+                  fileStatuses={fileStatuses}
+                  fileNames={Object.fromEntries(UPLOAD_STEPS.map((s) => [s.fileType, event.files[s.fileType]?.fileName]))}
+                  onStepClick={handleStepChange}
+                />
               </CardContent>
             </Card>
           </div>
@@ -698,6 +910,26 @@ export function UploadWizard({
                       </AlertDescription>
                     </Alert>
                     <p className="text-sm text-muted-foreground">You can replace this file by uploading a new one below, or continue to the next step.</p>
+                  </div>
+                )}
+
+                {/* Attestation options for poll-sites and district-maps */}
+                {!isStepUploaded && (step.fileType === "poll-sites" || step.fileType === "district-maps") && (
+                  <div className="mb-4">
+                    <AttestationOptions
+                      fileType={step.fileType}
+                      eligibility={attestationEligibility}
+                      isAttesting={isAttesting}
+                      onAttest={handleAttestation}
+                    />
+                    {(attestationEligibility[`${step.fileType}:no-change`] || attestationEligibility[`${step.fileType}:state-geo-accurate`]) && (
+                      <div className="relative my-5">
+                        <Separator />
+                        <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-3 text-xs text-muted-foreground">
+                          or upload a file
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
