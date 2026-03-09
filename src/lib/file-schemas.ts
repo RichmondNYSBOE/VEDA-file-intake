@@ -118,6 +118,8 @@ export const headerAliases: Record<string, Record<string, string>> = {
     elecname: "Election_Name",
     muni: "Municipality",
     town: "Municipality",
+    municipaltype: "MunicipalityType",
+    munitype: "MunicipalityType",
     pct: "Precinct",
     ed: "ElectionDistrict",
     houseno: "HASNO",
@@ -248,6 +250,7 @@ export const fileSchemas: Record<string, FieldSchema[]> = {
   "poll-sites": [
     { name: "Election_Name", type: "string", required: true },
     { name: "Municipality", type: "string", required: true },
+    { name: "MunicipalityType", type: "string", required: true },
     { name: "Ward", type: "string", required: false },
     { name: "Precinct", type: "string", required: false },
     { name: "ElectionDistrict", type: "string", required: true },
