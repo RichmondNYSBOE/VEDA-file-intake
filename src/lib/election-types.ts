@@ -101,8 +101,8 @@ export const UPLOAD_STEPS = [
     required: false,
   },
   {
-    fileType: "voter-history",
-    label: "Voter History",
+    fileType: "voter-information",
+    label: "Voter Information",
     description:
       "Upload the CSV file with voter participation and registration records.",
     accept: ".csv",

@@ -285,7 +285,7 @@ export async function getAllFileVersions(
 
 const DEFAULT_FILE_STATUS: ElectionEventFileStatus = { uploaded: false };
 
-const FILE_TYPES = ["poll-sites", "election-results", "voter-history", "district-maps"] as const;
+const FILE_TYPES = ["poll-sites", "election-results", "voter-information", "district-maps"] as const;
 
 /** Convert the REPEATED files record from BigQuery into the Record<string, ElectionEventFileStatus> shape. */
 function parseFilesRecord(

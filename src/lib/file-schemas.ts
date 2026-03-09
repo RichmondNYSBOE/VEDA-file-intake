@@ -81,8 +81,8 @@ export const headerAliases: Record<string, Record<string, string>> = {
     electype: "Election_Type",
     elecname: "Election_Name",
   },
-  "voter-history": {
-    elecname: "Election_Name",
+  "voter-information": {
+    elecname: "ElectionName",
     muni: "Municipality",
     town: "Municipality",
     munitype: "MunicipalityType",
@@ -93,6 +93,7 @@ export const headerAliases: Record<string, Record<string, string>> = {
     middleinitial: "MiddleName",
     suffix: "NameSuffix",
     sex: "Gender",
+    confidential: "ConfidentialYN",
     party: "PoliticalParty",
     regdate: "RegistrationDate",
     homeaddr: "ResAddr1",
@@ -109,10 +110,11 @@ export const headerAliases: Record<string, Record<string, string>> = {
     mailzip: "MailingZip",
     mailcountry: "MailingCountry",
     pct: "Precinct",
-    ed: "ElectionDistrict",
+    ed: "ElectionSchoolLibraryDistrict",
+    electiondistrict: "ElectionSchoolLibraryDistrict",
     votemethod: "VotingMethod",
     method: "VotingMethod",
-    regsource: "RegistrationSource",
+    regsource: "Registration_Source",
     absenteereason: "InvalidAbsenteeBallotReason",
     affidavitreason: "InvalidAffidavitBallotReason",
   },
@@ -146,7 +148,7 @@ export const headerAliases: Record<string, Record<string, string>> = {
  * Complete column schemas for each of the 4 election data file types.
  *
  * Keyed by file type identifier (e.g. "election-results", "elections",
- * "voter-history", "poll-sites"). Each entry is an ordered array of
+ * "voter-information", "poll-sites"). Each entry is an ordered array of
  * {@link FieldSchema} objects defining the canonical column list.
  */
 export const fileSchemas: Record<string, FieldSchema[]> = {
@@ -212,8 +214,8 @@ export const fileSchemas: Record<string, FieldSchema[]> = {
     { name: "Election_Name", type: "string", required: true },
     { name: "Amended", type: "string", required: false },
   ],
-  "voter-history": [
-    { name: "Election_Name", type: "string", required: true },
+  "voter-information": [
+    { name: "ElectionName", type: "string", required: true },
     { name: "Municipality", type: "string", required: true },
     { name: "MunicipalityType", type: "string", required: true },
     { name: "LastName", type: "string", required: true },
@@ -222,6 +224,7 @@ export const fileSchemas: Record<string, FieldSchema[]> = {
     { name: "NameSuffix", type: "string", required: false },
     { name: "Gender", type: "string", required: false },
     { name: "DOB", type: "date", required: false, format: "mm/dd/yyyy" },
+    { name: "ConfidentialYN", type: "string", required: false },
     { name: "PoliticalParty", type: "string", required: false },
     { name: "OtherParty", type: "string", required: false },
     { name: "RegistrationDate", type: "date", required: false, format: "mm/dd/yyyy" },
@@ -238,15 +241,14 @@ export const fileSchemas: Record<string, FieldSchema[]> = {
     { name: "MailingCountry", type: "string", required: false },
     { name: "Ward", type: "string", required: false },
     { name: "Precinct", type: "string", required: false },
-    { name: "LD", type: "string", required: false },
     { name: "AD", type: "string", required: false },
     { name: "SD", type: "string", required: false },
     { name: "CD", type: "string", required: false },
-    { name: "ElectionDistrict", type: "string", required: false },
+    { name: "ElectionSchoolLibraryDistrict", type: "string", required: false },
     { name: "VotingMethod", type: "string", required: true },
     { name: "Status", type: "string", required: false },
     { name: "Status_Reason", type: "string", required: false },
-    { name: "RegistrationSource", type: "string", required: false },
+    { name: "Registration_Source", type: "string", required: false },
     { name: "InvalidAbsenteeBallotReason", type: "string", required: false },
     { name: "InvalidAffidavitBallotReason", type: "string", required: false },
   ],
