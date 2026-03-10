@@ -20,6 +20,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { electionsContent } from "@/content/elections";
+import { commonContent } from "@/content/common";
+import { dashboardContent } from "@/content/dashboard";
 
 interface DeleteElectionDialogProps {
   event: ElectionEvent | null;
@@ -50,7 +53,7 @@ export function DeleteElectionDialog({
         toast.error(result.message);
       }
     } catch {
-      toast.error("Something went wrong while deleting the event. Please try again.");
+      toast.error(dashboardContent.deleteError);
     } finally {
       setIsDeleting(false);
     }
@@ -68,33 +71,30 @@ export function DeleteElectionDialog({
             <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
               <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
             </div>
-            <AlertDialogTitle>Delete Election Event</AlertDialogTitle>
+            <AlertDialogTitle>{electionsContent.deleteDialog.title}</AlertDialogTitle>
           </div>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
               <p>
-                Are you sure you want to delete{" "}
-                <strong className="text-foreground">{event.electionName}</strong>?
+                {electionsContent.deleteDialog.confirmPrompt(event.electionName)}
               </p>
               {hasUploadedFiles && (
                 <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300">
-                  This event has uploaded files. Deleting the event will not remove
-                  the uploaded files from storage, but they will no longer be
-                  associated with this event.
+                  {electionsContent.deleteDialog.hasUploadedFilesWarning}
                 </div>
               )}
-              <p>This action cannot be undone.</p>
+              <p>{electionsContent.deleteDialog.cannotUndo}</p>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isDeleting}>{commonContent.buttons.cancel}</AlertDialogCancel>
           <Button
             variant="destructive"
             onClick={handleDelete}
             disabled={isDeleting}
           >
-            {isDeleting ? "Deleting..." : "Delete Event"}
+            {isDeleting ? commonContent.loading.deleting : electionsContent.deleteDialog.deleteButton}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

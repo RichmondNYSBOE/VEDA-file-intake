@@ -34,6 +34,8 @@ import {
 } from "@/lib/election-types";
 import { createElectionEvent } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
+import { electionsContent } from "@/content/elections";
+import { commonContent } from "@/content/common";
 
 interface CreateElectionDialogProps {
   open: boolean;
@@ -103,8 +105,8 @@ export function CreateElectionDialog({
       await navigator.clipboard.writeText(derivedName);
       setCopied(true);
       toast({
-        title: "Copied",
-        description: "Election name copied to clipboard.",
+        title: electionsContent.createDialog.toast.copiedTitle,
+        description: electionsContent.createDialog.toast.copiedDescription,
       });
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -137,7 +139,7 @@ export function CreateElectionDialog({
 
     if (result.success) {
       toast({
-        title: "Election Event Created",
+        title: electionsContent.createDialog.toast.createdTitle,
         description: result.message,
       });
       // Reset form
@@ -173,11 +175,10 @@ export function CreateElectionDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5 text-primary" />
-            Create Election Event
+            {electionsContent.createDialog.title}
           </DialogTitle>
           <DialogDescription>
-            Set up a new election event to begin uploading your files. The
-            generated election name must be entered into all submitted documents.
+            {electionsContent.createDialog.description}
           </DialogDescription>
         </DialogHeader>
 
@@ -185,7 +186,7 @@ export function CreateElectionDialog({
           {/* Election Authority (read-only context) */}
           <div className="rounded-md bg-muted/50 border p-3">
             <p className="text-xs text-muted-foreground mb-1">
-              Election Authority
+              {electionsContent.createDialog.electionAuthorityLabel}
             </p>
             <p className="font-medium text-sm">{electionAuthorityName}</p>
             <p className="text-xs text-muted-foreground">{electionAuthorityType}</p>
@@ -193,7 +194,7 @@ export function CreateElectionDialog({
 
           {/* Election Date */}
           <div className="space-y-2">
-            <Label htmlFor="election-date">Election Date</Label>
+            <Label htmlFor="election-date">{electionsContent.createDialog.electionDateLabel}</Label>
             <Input
               id="election-date"
               type="date"
@@ -202,25 +203,24 @@ export function CreateElectionDialog({
               className="w-full"
             />
             <p className="text-xs text-muted-foreground">
-              Select the date on which the election was or will be held.
+              {electionsContent.createDialog.electionDateHelp}
             </p>
           </div>
 
           {/* Election Type */}
           <div className="space-y-2">
-            <Label htmlFor="election-type">Election Type</Label>
+            <Label htmlFor="election-type">{electionsContent.createDialog.electionTypeLabel}</Label>
             {electionTypeOptions.length === 0 ? (
               <Alert>
                 <Info className="h-4 w-4" />
                 <AlertDescription>
-                  No election types are available for your authority type (
-                  {electionAuthorityType}). Please contact your administrator.
+                  {electionsContent.createDialog.noElectionTypesAvailable(electionAuthorityType)}
                 </AlertDescription>
               </Alert>
             ) : (
               <Select value={electionType} onValueChange={setElectionType}>
                 <SelectTrigger id="election-type">
-                  <SelectValue placeholder="Choose an election type..." />
+                  <SelectValue placeholder={electionsContent.createDialog.electionTypePlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
                   {electionTypeOptions.map((opt) => (
@@ -235,7 +235,7 @@ export function CreateElectionDialog({
 
           {/* Certification Date */}
           <div className="space-y-2">
-            <Label htmlFor="certification-date">Certification Date</Label>
+            <Label htmlFor="certification-date">{electionsContent.createDialog.certificationDateLabel}</Label>
             <Input
               id="certification-date"
               type="date"

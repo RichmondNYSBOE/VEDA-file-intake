@@ -33,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { UPLOAD_STEPS } from "@/lib/election-types";
+import { type ComplianceStatus, getComplianceStatus } from "@/domain/election/compliance";
 import {
   Plus,
   ShieldCheck,
@@ -54,19 +55,6 @@ import { cn } from "@/lib/utils";
 // ---------------------------------------------------------------------------
 // Compliance helpers
 // ---------------------------------------------------------------------------
-
-type ComplianceStatus = "complete" | "in-progress" | "not-started";
-
-function getComplianceStatus(event: ElectionEvent): ComplianceStatus {
-  const fileTypes = UPLOAD_STEPS.map((s) => s.fileType);
-  const uploadedCount = fileTypes.filter(
-    (ft) => event.files[ft]?.uploaded,
-  ).length;
-
-  if (uploadedCount === fileTypes.length) return "complete";
-  if (uploadedCount > 0) return "in-progress";
-  return "not-started";
-}
 
 function ComplianceBadge({ status }: { status: ComplianceStatus }) {
   switch (status) {
