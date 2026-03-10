@@ -17,6 +17,7 @@ import { CURRENT_USER } from '@/infrastructure/bigquery/client';
 import { updateElectionEventFileStatus } from '@/services/election-service';
 import { logSubmission } from '@/services/audit-service';
 import type { AttestationType } from '@/domain/types';
+import { validationMessages } from '@/content/validation-messages';
 
 // ---------------------------------------------------------------------------
 // Eligibility
@@ -90,8 +91,8 @@ export async function submitAttestation(data: {
     // 2. Build descriptive label
     const attestLabel =
       data.attestationType === 'no-change'
-        ? 'Attested — No changes since previous election'
-        : 'Attested — State GEO maps are accurate';
+        ? validationMessages.attestations.noChangeLabel
+        : validationMessages.attestations.stateGeoLabel;
 
     // 3. Update election event file status
     await updateElectionEventFileStatus(data.electionEventId, data.fileType, {
@@ -107,19 +108,19 @@ export async function submitAttestation(data: {
       attestLabel,
       data.fileType,
       true,
-      `${friendlyType} requirement satisfied via attestation.`,
+      validationMessages.attestations.logMessage(friendlyType),
       data.electionEventId,
     );
 
     return {
       success: true,
-      message: `${friendlyType} requirement has been satisfied via attestation.`,
+      message: validationMessages.attestations.successMessage(friendlyType),
     };
   } catch (error) {
     console.error('Failed to submit attestation:', error);
     return {
       success: false,
-      message: 'Something went wrong while recording the attestation. Please try again.',
+      message: validationMessages.attestations.error,
     };
   }
 }

@@ -18,6 +18,7 @@ import {
 import { deactivateFileVersionsByEvent } from '@/infrastructure/bigquery/submission-repository';
 import { CURRENT_USER, DEFAULT_FILE_STATUS, FILE_TYPES } from '@/infrastructure/bigquery/client';
 import type { ElectionEvent, ElectionEventFileStatus } from '@/domain/types';
+import { validationMessages } from '@/content/validation-messages';
 
 // ---------------------------------------------------------------------------
 // Create
@@ -37,7 +38,7 @@ export async function createElectionEvent(data: {
     if (exists) {
       return {
         success: false,
-        message: `An election event named "${data.electionName}" already exists for your authority. Please choose a different date or election type.`,
+        message: validationMessages.electionEvents.duplicateEvent(data.electionName),
       };
     }
 
@@ -62,7 +63,7 @@ export async function createElectionEvent(data: {
 
     return {
       success: true,
-      message: `Election event "${data.electionName}" has been created.`,
+      message: validationMessages.electionEvents.created(data.electionName),
       id,
     };
   } catch (error: unknown) {
@@ -70,7 +71,7 @@ export async function createElectionEvent(data: {
     const detail = error instanceof Error ? error.message : 'Unknown error';
     return {
       success: false,
-      message: `Failed to create the election event: ${detail}`,
+      message: validationMessages.electionEvents.createFailed(detail),
     };
   }
 }
@@ -140,7 +141,7 @@ export async function deleteElectionEvent(
     if (!event) {
       return {
         success: false,
-        message: 'The election event could not be found. It may have already been deleted.',
+        message: validationMessages.electionEvents.notFound,
       };
     }
 
@@ -152,14 +153,14 @@ export async function deleteElectionEvent(
 
     return {
       success: true,
-      message: `Election event "${event.electionName}" has been deleted.`,
+      message: validationMessages.electionEvents.deleted(event.electionName),
     };
   } catch (error: unknown) {
     console.error('Failed to delete election event:', error);
     const detail = error instanceof Error ? error.message : 'Unknown error';
     return {
       success: false,
-      message: `Failed to delete the election event: ${detail}`,
+      message: validationMessages.electionEvents.deleteFailed(detail),
     };
   }
 }

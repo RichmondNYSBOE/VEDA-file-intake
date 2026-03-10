@@ -1,3 +1,5 @@
+// TODO: This file appears to be unused (superseded by upload-wizard.tsx). Remove after confirming with team.
+
 "use client";
 
 /**

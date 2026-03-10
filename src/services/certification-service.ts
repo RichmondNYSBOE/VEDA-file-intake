@@ -12,6 +12,7 @@ import {
 } from '@/infrastructure/bigquery/certification-repository';
 import { CURRENT_USER } from '@/infrastructure/bigquery/client';
 import type { NoElectionsCertification } from '@/domain/types';
+import { validationMessages } from '@/content/validation-messages';
 
 // ---------------------------------------------------------------------------
 // Certify
@@ -29,7 +30,7 @@ export async function certifyNoElections(data: {
     if (exists) {
       return {
         success: false,
-        message: `A "No Elections" certification for ${data.year} already exists for your authority.`,
+        message: validationMessages.certifications.duplicate(data.year),
       };
     }
 
@@ -42,13 +43,13 @@ export async function certifyNoElections(data: {
 
     return {
       success: true,
-      message: `Your authority has been certified as having no elections in ${data.year}.`,
+      message: validationMessages.certifications.success(data.year),
     };
   } catch (error) {
     console.error('Failed to certify no elections:', error);
     return {
       success: false,
-      message: 'Something went wrong while saving the certification. Please try again.',
+      message: validationMessages.certifications.error,
     };
   }
 }

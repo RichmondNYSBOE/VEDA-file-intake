@@ -15,6 +15,7 @@ import { uploadToGCS, getGCSBucketName } from '@/infrastructure/storage/gcs-clie
 import { CURRENT_USER } from '@/infrastructure/bigquery/client';
 import { logSubmission, createFileVersion } from '@/services/audit-service';
 import { updateElectionEventFileStatus } from '@/services/election-service';
+import { validationMessages } from '@/content/validation-messages';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -94,16 +95,16 @@ async function performUpload(
   if (!bucketName || bucketName === 'your-gcs-bucket-name-here') {
     return {
       success: false,
-      message: 'The server is not properly configured for file storage. Please contact your administrator.',
+      message: validationMessages.serverNotConfigured,
     };
   }
 
   if (!file || file.size === 0) {
-    return { success: false, message: 'No file was provided. Please select a file and try again.' };
+    return { success: false, message: validationMessages.noFileProvided };
   }
 
   if (file.size > 5 * 1024 * 1024) {
-    return { success: false, message: 'This file is too large. The maximum allowed size is 5 MB. Please reduce the file size and try again.' };
+    return { success: false, message: validationMessages.fileTooLarge };
   }
 
   // District maps: accept .zip (shapefile) / .geojson / .json — convert to GeoJSON
@@ -129,7 +130,7 @@ async function handleDistrictMapUpload(
   if (!validExtension) {
     return {
       success: false,
-      message: 'This file type is not accepted for District Maps. Please upload a .zip file (containing shapefiles) or a .geojson file.',
+      message: validationMessages.districtMaps.invalidFileType,
     };
   }
 
@@ -192,8 +193,8 @@ async function handleDistrictMapUpload(
     return {
       success: true,
       message: name.endsWith('.zip')
-        ? `${file.name} was converted to GeoJSON and uploaded successfully${countMsg}.`
-        : `${file.name} has been uploaded successfully${countMsg}.`,
+        ? validationMessages.districtMaps.shapefileConverted(file.name, countMsg)
+        : validationMessages.districtMaps.geojsonUploaded(file.name, countMsg),
       gcsPath: geojsonDest,
     };
   } catch (error: unknown) {
@@ -202,12 +203,12 @@ async function handleDistrictMapUpload(
     if (errorMessage.includes('Could not refresh access token')) {
       return {
         success: false,
-        message: 'There was a temporary problem connecting to the file storage service. Please wait a moment and try again.',
+        message: validationMessages.gcsConnectionError,
       };
     }
     return {
       success: false,
-      message: 'There was a problem uploading your file. Please try again. If the problem continues, contact your administrator.',
+      message: validationMessages.genericUploadError,
     };
   }
 }
@@ -222,12 +223,12 @@ async function handleCsvUpload(
   bucketName: string,
 ): Promise<{ success: boolean; message: string; gcsPath?: string }> {
   if (file.type !== 'text/csv') {
-    return { success: false, message: 'This file is not a CSV. Please upload a .csv file.' };
+    return { success: false, message: validationMessages.notCsv };
   }
 
   const schema = fileSchemas[fileType];
   if (!schema) {
-    return { success: false, message: `We don't recognize this file type ("${fileType}"). Please try a different upload option.` };
+    return { success: false, message: validationMessages.unrecognizedFileType(fileType) };
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -257,7 +258,7 @@ async function handleCsvUpload(
 
     const rowCount = lines.length - 1; // subtract header row
     const friendlyFileType = fileType.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    return { success: true, message: `${friendlyFileType} successfully uploaded — ${rowCount} row${rowCount !== 1 ? 's' : ''}.`, gcsPath: destination };
+    return { success: true, message: validationMessages.uploadSuccess(friendlyFileType, rowCount), gcsPath: destination };
   } catch (error: unknown) {
     console.error('Error uploading to GCS:', error);
 
@@ -265,13 +266,13 @@ async function handleCsvUpload(
     if (errorMessage.includes('Could not refresh access token')) {
       return {
         success: false,
-        message: 'There was a temporary problem connecting to the file storage service. Please wait a moment and try again.',
+        message: validationMessages.gcsConnectionError,
       };
     }
 
     return {
       success: false,
-      message: 'There was a problem uploading your file. Please try again. If the problem continues, contact your administrator.',
+      message: validationMessages.genericUploadError,
     };
   }
 }
