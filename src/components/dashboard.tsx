@@ -4,8 +4,8 @@
  * Main Dashboard component. Orchestrates the primary user interface: displays
  * election events with compliance badges, no-elections certifications, and
  * provides navigation to the upload wizard and history views. Supports both
- * single-authority and combined 'all authorities' views. Contains helper
- * components: ComplianceBadge, FileStatusDots, ElectionEventCard, CertificationCard.
+ * single-authority and combined 'all authorities' views. Sub-components are
+ * extracted into src/components/dashboard/.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -15,257 +15,32 @@ import {
   type ElectionEvent,
   type NoElectionsCertification,
 } from "@/app/actions";
-import { useElectionAuthority, ALL_AUTHORITIES } from "@/components/election-authority-context";
+import { useElectionAuthority } from "@/components/election-authority-context";
 import { CreateElectionDialog } from "@/components/create-election-dialog";
 import { DeleteElectionDialog } from "@/components/delete-election-dialog";
 import { NoElectionsDialog } from "@/components/no-elections-dialog";
 import { UploadWizard } from "@/components/upload-wizard";
 import { UploadHistory } from "@/components/upload-history";
 import { InfoSidebar } from "@/components/info-sidebar";
+import { ElectionEventCard } from "@/components/dashboard/election-event-card";
+import { CertificationCard } from "@/components/dashboard/certification-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { UPLOAD_STEPS } from "@/lib/election-types";
+import { getComplianceStatus } from "@/domain/election/compliance";
 import {
   Plus,
   ShieldCheck,
   CalendarDays,
-  FileUp,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  Ban,
-  ChevronRight,
   LayoutDashboard,
   History,
   Building2,
-  MoreVertical,
-  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-// ---------------------------------------------------------------------------
-// Compliance helpers
-// ---------------------------------------------------------------------------
-
-type ComplianceStatus = "complete" | "in-progress" | "not-started";
-
-function getComplianceStatus(event: ElectionEvent): ComplianceStatus {
-  const fileTypes = UPLOAD_STEPS.map((s) => s.fileType);
-  const uploadedCount = fileTypes.filter(
-    (ft) => event.files[ft]?.uploaded,
-  ).length;
-
-  if (uploadedCount === fileTypes.length) return "complete";
-  if (uploadedCount > 0) return "in-progress";
-  return "not-started";
-}
-
-function ComplianceBadge({ status }: { status: ComplianceStatus }) {
-  switch (status) {
-    case "complete":
-      return (
-        <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1">
-          <CheckCircle2 className="h-3 w-3" />
-          Complete
-        </Badge>
-      );
-    case "in-progress":
-      return (
-        <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 gap-1">
-          <Clock className="h-3 w-3" />
-          In Progress
-        </Badge>
-      );
-    case "not-started":
-      return (
-        <Badge variant="outline" className="text-muted-foreground gap-1">
-          <AlertCircle className="h-3 w-3" />
-          Not Started
-        </Badge>
-      );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// File status dots
-// ---------------------------------------------------------------------------
-
-function FileStatusDots({ event }: { event: ElectionEvent }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      {UPLOAD_STEPS.map((step) => {
-        const isUploaded = event.files[step.fileType]?.uploaded;
-        return (
-          <div
-            key={step.fileType}
-            title={`${step.label}: ${isUploaded ? "Uploaded" : "Pending"}`}
-            className={cn(
-              "w-2.5 h-2.5 rounded-full",
-              isUploaded
-                ? "bg-emerald-500"
-                : "bg-gray-300 dark:bg-gray-600",
-            )}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Election event card
-// ---------------------------------------------------------------------------
-
-function ElectionEventCard({
-  event,
-  onUploadFiles,
-  onDelete,
-  showAuthority,
-}: {
-  event: ElectionEvent;
-  onUploadFiles: () => void;
-  onDelete: () => void;
-  showAuthority?: boolean;
-}) {
-  const status = getComplianceStatus(event);
-  const uploadedCount = UPLOAD_STEPS.filter(
-    (s) => event.files[s.fileType]?.uploaded,
-  ).length;
-  const totalCount = UPLOAD_STEPS.length;
-
-  return (
-    <Card className="hover:shadow-md transition-shadow">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-1">
-              <CalendarDays className="h-4 w-4 text-primary flex-shrink-0" />
-              <h3 className="font-semibold text-base truncate">
-                {event.electionName}
-              </h3>
-            </div>
-            <div className="ml-7 space-y-2">
-              {showAuthority && (
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Building2 className="h-3 w-3" />
-                  {event.electionAuthorityName}
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                <span>Date: {event.date}</span>
-                <span>Type: {event.electionType}</span>
-              </div>
-
-              {/* File status */}
-              <div className="flex items-center gap-3">
-                <FileStatusDots event={event} />
-                <span className={cn(
-                  "text-xs font-medium",
-                  uploadedCount === totalCount
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-amber-600 dark:text-amber-400",
-                )}>
-                  {uploadedCount} of {totalCount} files uploaded
-                </span>
-              </div>
-
-              {/* Missing files list */}
-              {status !== "complete" && (
-                <div className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                  Still needed:{" "}
-                  <span className="font-normal">
-                    {UPLOAD_STEPS.filter(
-                      (s) => !event.files[s.fileType]?.uploaded,
-                    )
-                      .map((s) => s.label)
-                      .join(", ")}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-col items-end gap-2 flex-shrink-0">
-            <div className="flex items-center gap-1">
-              <ComplianceBadge status={status} />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7">
-                    <MoreVertical className="h-4 w-4" />
-                    <span className="sr-only">More actions</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
-                    onClick={onDelete}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Event
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-            <Button
-              size="sm"
-              variant={status === "complete" ? "outline" : "default"}
-              onClick={onUploadFiles}
-              className="gap-1.5"
-            >
-              {status === "complete" ? (
-                <>View Files</>
-              ) : (
-                <>
-                  <FileUp className="h-3.5 w-3.5" />
-                  Upload Files
-                </>
-              )}
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// No Elections certification card
-// ---------------------------------------------------------------------------
-
-function CertificationCard({ cert, showAuthority }: { cert: NoElectionsCertification; showAuthority?: boolean }) {
-  return (
-    <Card>
-      <CardContent className="p-4 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-          <Ban className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">
-            No Elections Certified &mdash; {cert.year}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {showAuthority && <>{cert.electionAuthorityName} &middot; </>}
-            Certified by {cert.certifiedBy} on{" "}
-            {new Date(cert.certifiedAt).toLocaleDateString()}
-          </p>
-        </div>
-        <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 gap-1">
-          <ShieldCheck className="h-3 w-3" />
-          Compliant
-        </Badge>
-      </CardContent>
-    </Card>
-  );
-}
+import { dashboardContent } from "@/content/dashboard";
+import { commonContent } from "@/content/common";
 
 // ---------------------------------------------------------------------------
 // Main Dashboard
@@ -383,14 +158,14 @@ export function Dashboard() {
               <div className="flex items-center gap-2 mb-1">
                 <LayoutDashboard className="h-5 w-5 text-primary" />
                 <h2 className="text-2xl font-semibold text-foreground">
-                  Dashboard
+                  {dashboardContent.title}
                 </h2>
               </div>
               <p className="text-muted-foreground">
                 {isAllSelected ? (
-                  <>Track compliance status across <strong>all election authorities</strong>.</>
+                  <>{dashboardContent.description.allAuthorities}</>
                 ) : (
-                  <>Manage election events and track your compliance status for{" "}<strong>{authority.name}</strong>.</>
+                  <>{dashboardContent.description.singleAuthority(authority.name)}</>
                 )}
               </p>
             </div>
@@ -402,7 +177,7 @@ export function Dashboard() {
                 className="gap-1.5"
               >
                 <History className="h-4 w-4" />
-                <span className="hidden sm:inline">View</span> History
+                <span className="hidden sm:inline">{dashboardContent.buttons.viewHistoryPrefix}</span> {dashboardContent.buttons.viewHistory}
               </Button>
               {!isAllSelected && (
                 <>
@@ -413,7 +188,7 @@ export function Dashboard() {
                     className="gap-1.5"
                   >
                     <ShieldCheck className="h-4 w-4" />
-                    <span className="hidden sm:inline">Certify</span> No Elections
+                    <span className="hidden sm:inline">{dashboardContent.buttons.certifyNoElectionsPrefix}</span> {dashboardContent.buttons.certifyNoElections}
                   </Button>
                   <Button
                     size="sm"
@@ -421,7 +196,7 @@ export function Dashboard() {
                     className="gap-1.5"
                   >
                     <Plus className="h-4 w-4" />
-                    New Election Event
+                    {dashboardContent.buttons.newElectionEvent}
                   </Button>
                 </>
               )}
@@ -432,7 +207,7 @@ export function Dashboard() {
           {isLoading && (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
-              <p className="text-muted-foreground">Loading your data...</p>
+              <p className="text-muted-foreground">{dashboardContent.loading}</p>
             </div>
           )}
 
@@ -444,12 +219,10 @@ export function Dashboard() {
                   <CalendarDays className="h-8 w-8 text-muted-foreground/50" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">
-                  No Election Events Yet
+                  {dashboardContent.emptyState.singleAuthority.title}
                 </h3>
                 <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                  To begin uploading your election data files, you first need to
-                  create an election event. Click the button below to get
-                  started.
+                  {dashboardContent.emptyState.singleAuthority.description}
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                   <Button
@@ -457,16 +230,16 @@ export function Dashboard() {
                     className="gap-1.5"
                   >
                     <Plus className="h-4 w-4" />
-                    Create Your First Election Event
+                    {dashboardContent.buttons.createFirstElection}
                   </Button>
-                  <span className="text-sm text-muted-foreground">or</span>
+                  <span className="text-sm text-muted-foreground">{commonContent.labels.or}</span>
                   <Button
                     variant="outline"
                     onClick={() => setShowNoElectionsDialog(true)}
                     className="gap-1.5"
                   >
                     <ShieldCheck className="h-4 w-4" />
-                    Certify No Elections
+                    {dashboardContent.buttons.certifyNoElections}
                   </Button>
                 </div>
               </CardContent>
@@ -481,11 +254,10 @@ export function Dashboard() {
                   <CalendarDays className="h-8 w-8 text-muted-foreground/50" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">
-                  No Election Events Found
+                  {dashboardContent.emptyState.allAuthorities.title}
                 </h3>
                 <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                  None of your election authorities have created election events yet.
-                  Select a specific authority from the dropdown to create one.
+                  {dashboardContent.emptyState.allAuthorities.description}
                 </p>
               </CardContent>
             </Card>
@@ -512,7 +284,7 @@ export function Dashboard() {
                           "text-xs font-medium",
                           completeEvents === totalEvents ? "text-emerald-600" : "text-amber-600",
                         )}>
-                          {completeEvents}/{totalEvents} complete
+                          {dashboardContent.electionCard.completeCount(completeEvents, totalEvents)}
                         </span>
                       )}
                     </div>
@@ -541,7 +313,7 @@ export function Dashboard() {
           {!isLoading && !isAllSelected && events.length > 0 && (
             <div className="space-y-3 mb-6">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Election Events
+                {dashboardContent.sections.electionEvents}
               </h3>
               {events.map((event) => (
                 <ElectionEventCard
@@ -559,7 +331,7 @@ export function Dashboard() {
             <div className="space-y-3">
               {events.length > 0 && <Separator className="my-6" />}
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                No-Elections Certifications
+                {dashboardContent.sections.noElectionsCertifications}
               </h3>
               {certifications.map((cert) => (
                 <CertificationCard key={cert.id} cert={cert} />
@@ -572,7 +344,7 @@ export function Dashboard() {
             <>
               <Separator className="my-6" />
               <div className="text-xs text-muted-foreground">
-                <p className="font-medium mb-2">File Status Legend</p>
+                <p className="font-medium mb-2">{dashboardContent.fileStatusLegend}</p>
                 <div className="flex flex-wrap gap-x-6 gap-y-1">
                   {UPLOAD_STEPS.map((step, i) => (
                     <span key={step.fileType} className="flex items-center gap-1.5">

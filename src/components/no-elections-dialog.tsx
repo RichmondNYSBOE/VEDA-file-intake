@@ -28,6 +28,8 @@ import { Label } from "@/components/ui/label";
 import { Loader2, ShieldCheck, AlertTriangle } from "lucide-react";
 import { certifyNoElections } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
+import { electionsContent } from "@/content/elections";
+import { commonContent } from "@/content/common";
 
 interface NoElectionsDialogProps {
   open: boolean;
@@ -68,7 +70,7 @@ export function NoElectionsDialog({
 
     if (result.success) {
       toast({
-        title: "Certification Saved",
+        title: electionsContent.noElectionsDialog.toast.certifiedTitle,
         description: result.message,
       });
       setYear(String(currentYear));
@@ -94,21 +96,19 @@ export function NoElectionsDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-primary" />
-            Certify No Elections
+            {electionsContent.noElectionsDialog.title}
           </DialogTitle>
           <DialogDescription>
-            If your authority did not hold any elections during a particular
-            year, you can certify that here. This will ensure your authority is
-            not marked as out of compliance.
+            {electionsContent.noElectionsDialog.description}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label htmlFor="cert-year">Year</Label>
+            <Label htmlFor="cert-year">{electionsContent.noElectionsDialog.yearLabel}</Label>
             <Select value={year} onValueChange={setYear}>
               <SelectTrigger id="cert-year">
-                <SelectValue placeholder="Select a year..." />
+                <SelectValue placeholder={electionsContent.noElectionsDialog.yearPlaceholder} />
               </SelectTrigger>
               <SelectContent>
                 {yearOptions.map((y) => (
@@ -119,17 +119,14 @@ export function NoElectionsDialog({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Select the calendar year for which your authority had no elections.
+              {electionsContent.noElectionsDialog.yearHelp}
             </p>
           </div>
 
           <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <AlertDescription className="text-amber-700 dark:text-amber-400">
-              By submitting this certification, you are confirming that{" "}
-              <strong>{electionAuthorityName}</strong> did not conduct any
-              elections during <strong>{year}</strong>. This action is recorded
-              and cannot be undone.
+              {electionsContent.noElectionsDialog.certificationWarning(electionAuthorityName, year)}
             </AlertDescription>
           </Alert>
 
@@ -146,16 +143,16 @@ export function NoElectionsDialog({
             onClick={() => handleOpenChange(false)}
             disabled={isSubmitting}
           >
-            Cancel
+            {commonContent.buttons.cancel}
           </Button>
           <Button onClick={handleSubmit} disabled={isSubmitting}>
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Submitting...
+                {commonContent.loading.submitting}
               </>
             ) : (
-              "Certify No Elections"
+              electionsContent.noElectionsDialog.submitButton
             )}
           </Button>
         </DialogFooter>
