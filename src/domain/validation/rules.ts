@@ -122,7 +122,7 @@ export function validateCsvRows(
     if (values.length !== schema.length) {
       return {
         valid: false,
-        message: `Row ${rowNumber} has the wrong number of columns. We expected ${schema.length} columns but found ${values.length}. Please check that row for missing or extra commas.`,
+        message: validationMessages.rowValidation.wrongColumnCount(rowNumber, schema.length, values.length),
       };
     }
 
@@ -136,13 +136,13 @@ export function validateCsvRows(
         if (value.trim() === '' && fieldSchema.required !== false) {
           return {
             valid: false,
-            message: `Row ${rowNumber}, column "${fieldSchema.name}": This field is required but was left blank. Please fill in a value.`,
+            message: validationMessages.rowValidation.requiredFieldBlank(rowNumber, fieldSchema.name),
           };
         }
 
         return {
           valid: false,
-          message: `Row ${rowNumber}, column "${fieldSchema.name}": Expected ${friendlyExpected} but found ${friendlyActual}. Please correct this value.`,
+          message: validationMessages.rowValidation.typeMismatch(rowNumber, fieldSchema.name, friendlyExpected, friendlyActual),
         };
       }
     }
