@@ -143,6 +143,11 @@ export async function parseFile(file: File): Promise<ParsedData> {
 /** Serialize parsed data into a CSV string suitable for upload to the server. */
 export function toCsvString(data: ParsedData): string {
   const escapeCsv = (val: string): string => {
+    // Prevent CSV formula injection: prefix dangerous leading characters with
+    // a single-quote so spreadsheet applications treat the cell as plain text.
+    if (/^[=+\-@\t\r]/.test(val)) {
+      val = `'${val}`;
+    }
     if (val.includes(",") || val.includes('"') || val.includes("\n")) {
       return `"${val.replace(/"/g, '""')}"`;
     }
