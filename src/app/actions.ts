@@ -10,71 +10,27 @@
 
 import { randomUUID } from 'crypto';
 import { Storage } from '@google-cloud/storage';
-import { fileSchemas, type FieldSchema } from '@/lib/file-schemas';
+import { fileSchemas } from '@/lib/file-schemas';
 import { bq, DATASET, ensureSchema } from '@/lib/bigquery';
 import { convertShapefileToGeoJSON, validateGeoJSON } from '@/lib/shapefile-converter';
+import { validateCsvRows } from '@/domain/validation/rules';
 
 // ---------------------------------------------------------------------------
-// Types
+// Types — canonical definitions live in @/domain/types; re-exported here
+// for backward compatibility with existing consumers.
 // ---------------------------------------------------------------------------
 
-export interface SubmissionLogEntry {
-  id: string;
-  timestamp: string;
-  fileName: string;
-  fileType: string;
-  success: boolean;
-  message: string;
-  uploadedBy?: string;
-  electionEventId?: string;
-  scanStatus?: string;
-}
+export type {
+  SubmissionLogEntry,
+  FileVersionEntry,
+  ElectionEventFileStatus,
+  ElectionEvent,
+  NoElectionsCertification,
+  AttestationType,
+  FileAttestation,
+} from '@/domain/types';
 
-export interface FileVersionEntry {
-  id: string;
-  fileType: string;
-  fileName: string;
-  gcsPath: string;
-  version: number;
-  uploadedAt: string;
-  electionAuthorityName: string;
-  electionAuthorityType: string;
-  amendmentNotes: string;
-  isActive: boolean;
-  uploadedBy?: string;
-  electionEventId?: string;
-}
-
-export interface ElectionEventFileStatus {
-  uploaded: boolean;
-  fileName?: string;
-  uploadedAt?: string;
-  uploadedBy?: string;
-  version?: number;
-  gcsPath?: string;
-}
-
-export interface ElectionEvent {
-  id: string;
-  date: string;
-  electionType: string;
-  electionName: string;
-  electionAuthorityName: string;
-  electionAuthorityType: string;
-  createdAt: string;
-  createdBy: string;
-  files: Record<string, ElectionEventFileStatus>;
-}
-
-export interface NoElectionsCertification {
-  id: string;
-  year: number;
-  electionAuthorityName: string;
-  electionAuthorityType: string;
-  certifiedAt: string;
-  certifiedBy: string;
-}
-
+import type { SubmissionLogEntry, FileVersionEntry, ElectionEventFileStatus, ElectionEvent, NoElectionsCertification, AttestationType } from '@/domain/types';
 // Hard-coded current user (auth to be added later)
 const CURRENT_USER = "Ryan Richmond";
 
@@ -610,20 +566,6 @@ export async function getNoElectionsCertifications(
 // File Attestations
 // ---------------------------------------------------------------------------
 
-/** Attestation types for file requirements that can be satisfied without upload. */
-export type AttestationType = "no-change" | "state-geo-accurate";
-
-export interface FileAttestation {
-  id: string;
-  electionEventId: string;
-  fileType: string;
-  attestationType: AttestationType;
-  electionAuthorityName: string;
-  electionAuthorityType: string;
-  attestedAt: string;
-  attestedBy: string;
-}
-
 /**
  * Checks whether an authority is eligible to attest for a given file type
  * instead of uploading a new file.
@@ -773,70 +715,6 @@ export async function submitAttestation(data: {
 }
 
 // ---------------------------------------------------------------------------
-// CSV validation — user-friendly error messages
-// ---------------------------------------------------------------------------
-
-/** Convert internal type names to user-friendly labels. */
-function friendlyTypeName(type: string): string {
-  switch (type) {
-    case "string":
-      return "Text";
-    case "number":
-      return "Number";
-    case "boolean":
-      return "Yes/No (true or false)";
-    case "date":
-      return "Date (MM/DD/YYYY)";
-    default:
-      return type;
-  }
-}
-
-/** Describe a value in user-friendly terms. */
-function friendlyValue(value: string): string {
-  if (value === "" || value === '""' || value === "''") {
-    return "Blank (empty)";
-  }
-  return `"${value}"`;
-}
-
-/** Validates a cell value against a field schema's expected type (string, number, boolean, date). */
-function validateType(value: string, fieldSchema: FieldSchema): boolean {
-  const trimmedValue = value.trim();
-
-  if (trimmedValue === '') {
-    return fieldSchema.required === false;
-  }
-
-  switch (fieldSchema.type) {
-    case "string":
-      return true;
-    case "number":
-      return !isNaN(Number(trimmedValue));
-    case "boolean": {
-      const lowerValue = trimmedValue.toLowerCase();
-      return lowerValue === 'true' || lowerValue === 'false';
-    }
-    case "date": {
-      const dateRegex = /^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/;
-      if (!dateRegex.test(trimmedValue)) {
-        return false;
-      }
-      // Normalize 2-digit years to 4-digit (00-29 → 2000-2029, 30-99 → 1930-1999)
-      const parts = trimmedValue.split("/");
-      if (parts[2].length === 2) {
-        const yy = parseInt(parts[2], 10);
-        parts[2] = String(yy <= 29 ? 2000 + yy : 1900 + yy);
-      }
-      const date = new Date(`${parts[0]}/${parts[1]}/${parts[2]}`);
-      return !isNaN(date.getTime());
-    }
-    default:
-      return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Upload logic
 // ---------------------------------------------------------------------------
 
@@ -961,60 +839,10 @@ async function performUpload(
   const fileContent = buffer.toString('utf-8');
   const lines = fileContent.split('\n').filter(line => line.trim() !== '');
 
-  if (lines.length < 2) {
-    return { success: false, message: 'This CSV file appears to be empty. It must contain a header row and at least one row of data.' };
-  }
-
-  // Header validation
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-  const expectedHeaders = schema.map(s => s.name);
-  if (headers.length !== expectedHeaders.length || !headers.every((h, i) => h === expectedHeaders[i])) {
-    const missing = expectedHeaders.filter(h => !headers.includes(h));
-    const extra = headers.filter(h => !expectedHeaders.includes(h));
-    let errorMessage = 'The column headers in your file do not match what is expected.';
-    if (missing.length > 0) {
-      errorMessage += `\n\nMissing columns: ${missing.join(', ')}`;
-    }
-    if (extra.length > 0) {
-      errorMessage += `\n\nUnexpected columns: ${extra.join(', ')}`;
-    }
-    errorMessage += `\n\nPlease check that your file has the correct columns in the right order.`;
-    return { success: false, message: errorMessage };
-  }
-
-  // Row validation (first 5 data rows)
-  const rowsToValidate = lines.slice(1, 6);
-  for (let i = 0; i < rowsToValidate.length; i++) {
-    const rowNumber = i + 2;
-    const values = rowsToValidate[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-
-    if (values.length !== schema.length) {
-      return {
-        success: false,
-        message: `Row ${rowNumber} has the wrong number of columns. We expected ${schema.length} columns but found ${values.length}. Please check that row for missing or extra commas.`,
-      };
-    }
-
-    for (let j = 0; j < schema.length; j++) {
-      const value = values[j];
-      const fieldSchema = schema[j];
-      if (!validateType(value, fieldSchema)) {
-        const friendlyExpected = friendlyTypeName(fieldSchema.type);
-        const friendlyActual = friendlyValue(value);
-
-        if (value.trim() === '' && fieldSchema.required !== false) {
-          return {
-            success: false,
-            message: `Row ${rowNumber}, column "${fieldSchema.name}": This field is required but was left blank. Please fill in a value.`,
-          };
-        }
-
-        return {
-          success: false,
-          message: `Row ${rowNumber}, column "${fieldSchema.name}": Expected ${friendlyExpected} but found ${friendlyActual}. Please correct this value.`,
-        };
-      }
-    }
+  // Validate CSV headers and first 5 data rows against the schema
+  const validation = validateCsvRows(lines, schema);
+  if (!validation.valid) {
+    return { success: false, message: validation.message! };
   }
 
   try {
