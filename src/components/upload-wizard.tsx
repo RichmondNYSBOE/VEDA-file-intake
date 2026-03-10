@@ -250,9 +250,9 @@ function MappingStatusAlerts({
       <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
         <Info className="h-4 w-4 text-blue-600" />
         <AlertDescription className="flex items-center justify-between text-blue-700 dark:text-blue-400">
-          <span>Your columns were automatically matched and reordered.</span>
+          <span>{uploadContent.headerMatching.autoResolved}</span>
           <Button type="button" variant="link" size="sm" className="text-blue-700 dark:text-blue-400 p-0 h-auto" onClick={(e) => { e.stopPropagation(); onOpenModal(); }}>
-            Review mapping
+            {uploadContent.headerMatching.reviewMapping}
           </Button>
         </AlertDescription>
       </Alert>
@@ -263,9 +263,9 @@ function MappingStatusAlerts({
       <Alert className="border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20">
         <CheckCircle2 className="h-4 w-4 text-emerald-600" />
         <AlertDescription className="flex items-center justify-between text-emerald-700 dark:text-emerald-400">
-          <span>Column mapping confirmed. Ready to upload.</span>
+          <span>{uploadContent.headerMatching.confirmed}</span>
           <Button type="button" variant="link" size="sm" className="text-emerald-700 dark:text-emerald-400 p-0 h-auto" onClick={(e) => { e.stopPropagation(); onOpenModal(); }}>
-            Edit mapping
+            {uploadContent.headerMatching.editMapping}
           </Button>
         </AlertDescription>
       </Alert>
@@ -276,9 +276,9 @@ function MappingStatusAlerts({
       <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
         <AlertTriangle className="h-4 w-4 text-amber-600" />
         <AlertDescription className="flex items-center justify-between text-amber-700 dark:text-amber-400">
-          <span>Some column headers could not be matched automatically. Please review them.</span>
+          <span>{uploadContent.headerMatching.needsReview}</span>
           <Button type="button" variant="link" size="sm" className="text-amber-700 dark:text-amber-400 p-0 h-auto" onClick={(e) => { e.stopPropagation(); onOpenModal(); }}>
-            Review mapping
+            {uploadContent.headerMatching.reviewMapping}
           </Button>
         </AlertDescription>
       </Alert>
@@ -289,9 +289,9 @@ function MappingStatusAlerts({
       <Alert variant="destructive">
         <XCircle className="h-4 w-4" />
         <AlertDescription className="flex items-center justify-between">
-          <span>The columns in your file don&apos;t match what we expect. Please map them manually.</span>
+          <span>{uploadContent.headerMatching.error}</span>
           <Button type="button" variant="link" size="sm" className="text-destructive p-0 h-auto" onClick={(e) => { e.stopPropagation(); onOpenModal(); }}>
-            Map columns
+            {uploadContent.headerMatching.mapColumns}
           </Button>
         </AlertDescription>
       </Alert>
