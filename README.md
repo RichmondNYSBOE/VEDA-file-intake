@@ -62,38 +62,38 @@ src/
 ├── app/
 │   ├── page.tsx                # Main page — NYS banner, dashboard, election selector
 │   ├── layout.tsx              # Root layout, metadata, Inter font, Toaster provider
-│   ├── actions.ts              # Server actions — file upload, validation, CRUD, audit logging
+│   ├── actions.ts              # Thin routing layer — delegates to services
 │   └── globals.css             # CSS variables, theme tokens (light/dark)
+├── domain/                     # Pure business logic & types (no infrastructure deps)
+│   ├── types.ts                # Canonical type definitions
+│   ├── validation/rules.ts     # CSV validation (pure functions)
+│   └── election/               # Attestation rules, compliance, naming
+├── content/                    # User-facing strings (localization-ready)
+│   ├── common.ts               # Shared labels, status terms
+│   ├── upload.ts               # Upload wizard strings
+│   ├── validation-messages.ts  # Validation error messages
+│   ├── elections.ts            # Election dialog strings
+│   └── dashboard.ts            # Dashboard UI strings
+├── services/                   # Business orchestration
+│   ├── upload-service.ts       # File upload lifecycle
+│   ├── election-service.ts     # Election CRUD
+│   ├── audit-service.ts        # Submission logs & file versioning
+│   ├── attestation-service.ts  # Attestation eligibility & submission
+│   └── certification-service.ts # No-elections certification
+├── infrastructure/             # Data access & external services
+│   ├── bigquery/               # Repository per table (election, submission, etc.)
+│   └── storage/gcs-client.ts   # Google Cloud Storage operations
 ├── components/
 │   ├── dashboard.tsx           # Main dashboard UI
 │   ├── upload-wizard.tsx       # Primary upload interface (step-by-step)
 │   ├── file-upload-card.tsx    # Drag-and-drop file upload component
-│   ├── upload-dashboard.tsx    # Upload dashboard view
-│   ├── upload-history.tsx      # Upload history / submission log
-│   ├── data-preview.tsx        # CSV data preview table
-│   ├── field-mapping-modal.tsx # Column mapping modal for header reconciliation
-│   ├── submission-log.tsx      # Audit trail for submissions
-│   ├── nys-banner.tsx          # NYS official branding banner
-│   ├── election-authority-context.tsx  # Election authority React context
-│   ├── election-authority-selector.tsx # Authority selector dropdown
-│   ├── create-election-dialog.tsx      # Create election event dialog
-│   ├── delete-election-dialog.tsx      # Delete election confirmation
-│   ├── no-elections-dialog.tsx         # No-elections certification dialog
-│   ├── version-history-dialog.tsx      # File version history viewer
-│   ├── info-sidebar.tsx        # Information sidebar
-│   ├── upload-progress-bar.tsx # Upload progress indicator
-│   ├── icons.tsx               # Custom VoteVault icon
-│   └── ui/                     # shadcn/ui component library (26+ components)
-├── hooks/
-│   ├── use-toast.ts            # Toast notification hook
-│   └── use-mobile.tsx          # Mobile detection hook
-├── lib/
+│   └── ...                     # Dialogs, selectors, banners, sidebar (see CLAUDE.md)
+├── hooks/                      # use-toast, use-mobile
+├── lib/                        # Shared utilities
 │   ├── file-schemas.ts         # Zod schemas for all 4 CSV file types
 │   ├── file-parser.ts          # CSV parsing utilities
 │   ├── header-matching.ts      # Fuzzy column header matching / normalization
-│   ├── election-types.ts       # Election data TypeScript types
 │   ├── bigquery.ts             # BigQuery client and auto-schema provisioning
-│   ├── firestore.ts            # Firestore database operations
 │   ├── shapefile-converter.ts  # Shapefile → GeoJSON conversion
 │   └── utils.ts                # cn() classname merge utility
 └── types/
@@ -112,17 +112,32 @@ infra/
     └── terraform.tfvars.example
 
 docs/
-└── blueprint.md                # Design guidelines, color palette, typography
+├── blueprint.md                # Design guidelines, color palette, typography
+├── security-audit.md           # Security audit findings and recommendations
+└── architecture-refactor.md    # Architecture refactor documentation
 ```
 
 ## Architecture
 
-VoteVault is a **Next.js 14** application using the App Router with server actions for all backend operations.
+VoteVault is a **Next.js 14** application using the App Router, organized in a Clean Architecture with four layers:
+
+```
+actions.ts (thin routing) → services (orchestration) → domain + content + infrastructure
+```
+
+| Layer | Location | Responsibility |
+|---|---|---|
+| **Domain** | `src/domain/` | Pure business logic, types, validation rules — no infrastructure deps |
+| **Content** | `src/content/` | All user-facing strings, centralized for localization |
+| **Services** | `src/services/` | Orchestrates domain rules + infrastructure, returns structured results |
+| **Infrastructure** | `src/infrastructure/` | Data access (BigQuery repositories, GCS storage) — no business logic |
+
+For full details on the refactoring, see [`docs/architecture-refactor.md`](docs/architecture-refactor.md).
 
 ### Key Patterns
 
-- **Server actions** (`"use server"`) handle all mutations: file uploads, validation, BigQuery writes, Firestore CRUD, and audit logging
-- **Client components** (`"use client"`) are used only for interactive UI: drag-and-drop uploads, forms, dialogs
+- **Server actions** (`"use server"`) are a thin routing layer that delegates to service functions
+- **Services** catch all errors and return `{ success, message }` — they never throw to the client
 - **Zod schemas** enforce strict CSV validation at upload time (headers + first 5 data rows)
 - **shadcn/ui** provides the component library — built on Radix UI primitives
 - **Election Authority context** scopes all data operations to the selected board of elections
