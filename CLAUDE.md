@@ -18,13 +18,44 @@ npm run lint                     # Run ESLint
 
 ## Architecture
 
+The codebase follows a Clean Architecture with four layers. See `docs/architecture-refactor.md` for the full rationale.
+
 ```
 src/
   app/
     page.tsx              # Main page — NYS banner, dashboard, election selector
     layout.tsx            # Root layout, metadata, Inter font, Toaster provider
-    actions.ts            # Server actions — upload, validation, CRUD, audit logging
+    actions.ts            # Thin routing layer — delegates to services, re-exports types
     globals.css           # CSS variables, theme tokens (light/dark)
+  domain/                 # Pure business logic & types (NO infrastructure deps)
+    types.ts              # Canonical type definitions (single source of truth)
+    validation/
+      rules.ts            # CSV validation — pure functions, no side effects
+    election/
+      naming.ts           # Election naming utilities
+      attestation-rules.ts # Attestation eligibility rules
+      compliance.ts       # Election compliance status calculation
+  content/                # User-facing strings (localization-ready)
+    common.ts             # Shared labels, status terms, app name
+    upload.ts             # Upload wizard strings
+    validation-messages.ts # Validation error messages
+    elections.ts          # Election dialog strings
+    dashboard.ts          # Dashboard UI strings
+  services/               # Business orchestration (coordinates domain + infrastructure)
+    upload-service.ts     # File upload lifecycle (validate → store → audit → version)
+    election-service.ts   # Election CRUD
+    audit-service.ts      # Submission logs & file versioning
+    attestation-service.ts # Attestation eligibility & submission
+    certification-service.ts # No-elections certification
+  infrastructure/         # Data access & external services (NO business logic)
+    bigquery/
+      client.ts           # Singleton client, shared constants, helpers
+      election-repository.ts    # election_events table
+      submission-repository.ts  # submission_logs & file_versions tables
+      attestation-repository.ts # file_attestations table
+      certification-repository.ts # no_elections_certifications table
+    storage/
+      gcs-client.ts       # Google Cloud Storage operations
   components/
     dashboard.tsx             # Main dashboard UI
     upload-wizard.tsx         # Primary upload interface (step-by-step)
@@ -64,11 +95,30 @@ infra/
   terraform/              # Infrastructure as Code (GCP resources)
 docs/
   blueprint.md            # Design guidelines, color palette, typography
+  security-audit.md       # Security audit findings and recommendations
+  architecture-refactor.md # Architecture refactor documentation
 ```
+
+### Layered Architecture
+
+```
+  app/actions.ts  →  services/*  →  domain/* + content/* + infrastructure/*
+  (thin routing)     (orchestration)  (pure logic)  (strings)   (data access)
+```
+
+**Dependency rules:**
+- `services/` may import from `domain/`, `content/`, and `infrastructure/`
+- `infrastructure/` may import from `domain/` (types only)
+- `domain/` and `content/` have no upstream dependencies
+- Components import from `app/actions` and `content/`, never directly from services or infrastructure
 
 ### Key Patterns
 
-- **Server actions** (`"use server"`) for all mutations and file uploads
+- **Server actions** (`"use server"`) in `actions.ts` are a thin routing layer — they extract parameters and delegate to service functions
+- **Services** orchestrate business logic, catch all errors, and return structured `{ success, message }` results (never throw)
+- **Domain** contains pure functions and type definitions with zero infrastructure dependencies
+- **Content** centralizes all user-facing strings for consistency and localization readiness
+- **Infrastructure** implements the repository pattern — one repository per BigQuery table
 - **Client components** (`"use client"`) only for interactive UI (forms, drag-and-drop)
 - **Zod + React Hook Form** for all form/data validation
 - **shadcn/ui** as the component library — do not introduce alternative UI libraries
