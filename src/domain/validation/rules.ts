@@ -6,6 +6,7 @@
  */
 
 import { type FieldSchema } from "@/lib/file-schemas";
+import { validationMessages } from "@/content/validation-messages";
 
 // ---------------------------------------------------------------------------
 // User-friendly formatting helpers
@@ -92,7 +93,7 @@ export function validateCsvRows(
 ): { valid: boolean; message?: string } {
   // Must have header + at least one data row
   if (lines.length < 2) {
-    return { valid: false, message: 'This CSV file appears to be empty. It must contain a header row and at least one row of data.' };
+    return { valid: false, message: validationMessages.emptyCsv };
   }
 
   // Header validation
@@ -101,14 +102,14 @@ export function validateCsvRows(
   if (headers.length !== expectedHeaders.length || !headers.every((h, i) => h === expectedHeaders[i])) {
     const missing = expectedHeaders.filter(h => !headers.includes(h));
     const extra = headers.filter(h => !expectedHeaders.includes(h));
-    let errorMessage = 'The column headers in your file do not match what is expected.';
+    let errorMessage = validationMessages.columnMismatch.base;
     if (missing.length > 0) {
-      errorMessage += `\n\nMissing columns: ${missing.join(', ')}`;
+      errorMessage += validationMessages.columnMismatch.missingColumns(missing.join(', '));
     }
     if (extra.length > 0) {
-      errorMessage += `\n\nUnexpected columns: ${extra.join(', ')}`;
+      errorMessage += validationMessages.columnMismatch.unexpectedColumns(extra.join(', '));
     }
-    errorMessage += `\n\nPlease check that your file has the correct columns in the right order.`;
+    errorMessage += validationMessages.columnMismatch.footer;
     return { valid: false, message: errorMessage };
   }
 
