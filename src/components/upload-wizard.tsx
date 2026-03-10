@@ -74,6 +74,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { uploadContent } from "@/content/upload";
+import { commonContent } from "@/content/common";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -192,12 +194,12 @@ function StepIndicator({
                         : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
                     )}
                   >
-                    {isAttested ? "Attested" : "Uploaded"}
+                    {isAttested ? commonContent.status.attested : commonContent.status.uploaded}
                   </Badge>
                 )}
                 {!isUploaded && !isCurrent && (
                   <Badge variant="outline" className="text-xs text-muted-foreground">
-                    Pending
+                    {commonContent.status.pending}
                   </Badge>
                 )}
                 {!isUploaded && isCurrent && (
@@ -228,7 +230,7 @@ function MappingStatusAlerts({
       <Alert>
         <Loader2 className="h-4 w-4 animate-spin" />
         <AlertDescription>
-          Checking your column headers...
+          {uploadContent.headerMatching.analyzing}
         </AlertDescription>
       </Alert>
     );
@@ -238,7 +240,7 @@ function MappingStatusAlerts({
       <Alert className="border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20">
         <CheckCircle2 className="h-4 w-4 text-emerald-600" />
         <AlertDescription className="text-emerald-700 dark:text-emerald-400">
-          All column headers match the expected format. Your data is ready to upload.
+          {uploadContent.headerMatching.exactMatch}
         </AlertDescription>
       </Alert>
     );

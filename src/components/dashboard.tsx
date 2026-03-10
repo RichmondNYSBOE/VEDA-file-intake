@@ -391,7 +391,7 @@ export function Dashboard() {
                 className="gap-1.5"
               >
                 <History className="h-4 w-4" />
-                <span className="hidden sm:inline">View</span> History
+                <span className="hidden sm:inline">{dashboardContent.buttons.viewHistoryPrefix}</span> {dashboardContent.buttons.viewHistory}
               </Button>
               {!isAllSelected && (
                 <>
@@ -402,7 +402,7 @@ export function Dashboard() {
                     className="gap-1.5"
                   >
                     <ShieldCheck className="h-4 w-4" />
-                    <span className="hidden sm:inline">Certify</span> No Elections
+                    <span className="hidden sm:inline">{dashboardContent.buttons.certifyNoElectionsPrefix}</span> {dashboardContent.buttons.certifyNoElections}
                   </Button>
                   <Button
                     size="sm"
@@ -410,7 +410,7 @@ export function Dashboard() {
                     className="gap-1.5"
                   >
                     <Plus className="h-4 w-4" />
-                    New Election Event
+                    {dashboardContent.buttons.newElectionEvent}
                   </Button>
                 </>
               )}
@@ -421,7 +421,7 @@ export function Dashboard() {
           {isLoading && (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
-              <p className="text-muted-foreground">Loading your data...</p>
+              <p className="text-muted-foreground">{dashboardContent.loading}</p>
             </div>
           )}
 
@@ -433,12 +433,10 @@ export function Dashboard() {
                   <CalendarDays className="h-8 w-8 text-muted-foreground/50" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">
-                  No Election Events Yet
+                  {dashboardContent.emptyState.singleAuthority.title}
                 </h3>
                 <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                  To begin uploading your election data files, you first need to
-                  create an election event. Click the button below to get
-                  started.
+                  {dashboardContent.emptyState.singleAuthority.description}
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                   <Button
@@ -446,16 +444,16 @@ export function Dashboard() {
                     className="gap-1.5"
                   >
                     <Plus className="h-4 w-4" />
-                    Create Your First Election Event
+                    {dashboardContent.buttons.createFirstElection}
                   </Button>
-                  <span className="text-sm text-muted-foreground">or</span>
+                  <span className="text-sm text-muted-foreground">{commonContent.labels.or}</span>
                   <Button
                     variant="outline"
                     onClick={() => setShowNoElectionsDialog(true)}
                     className="gap-1.5"
                   >
                     <ShieldCheck className="h-4 w-4" />
-                    Certify No Elections
+                    {dashboardContent.buttons.certifyNoElections}
                   </Button>
                 </div>
               </CardContent>
@@ -470,11 +468,10 @@ export function Dashboard() {
                   <CalendarDays className="h-8 w-8 text-muted-foreground/50" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">
-                  No Election Events Found
+                  {dashboardContent.emptyState.allAuthorities.title}
                 </h3>
                 <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                  None of your election authorities have created election events yet.
-                  Select a specific authority from the dropdown to create one.
+                  {dashboardContent.emptyState.allAuthorities.description}
                 </p>
               </CardContent>
             </Card>
@@ -501,7 +498,7 @@ export function Dashboard() {
                           "text-xs font-medium",
                           completeEvents === totalEvents ? "text-emerald-600" : "text-amber-600",
                         )}>
-                          {completeEvents}/{totalEvents} complete
+                          {dashboardContent.electionCard.completeCount(completeEvents, totalEvents)}
                         </span>
                       )}
                     </div>
@@ -530,7 +527,7 @@ export function Dashboard() {
           {!isLoading && !isAllSelected && events.length > 0 && (
             <div className="space-y-3 mb-6">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Election Events
+                {dashboardContent.sections.electionEvents}
               </h3>
               {events.map((event) => (
                 <ElectionEventCard
@@ -548,7 +545,7 @@ export function Dashboard() {
             <div className="space-y-3">
               {events.length > 0 && <Separator className="my-6" />}
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                No-Elections Certifications
+                {dashboardContent.sections.noElectionsCertifications}
               </h3>
               {certifications.map((cert) => (
                 <CertificationCard key={cert.id} cert={cert} />
@@ -561,7 +558,7 @@ export function Dashboard() {
             <>
               <Separator className="my-6" />
               <div className="text-xs text-muted-foreground">
-                <p className="font-medium mb-2">File Status Legend</p>
+                <p className="font-medium mb-2">{dashboardContent.fileStatusLegend}</p>
                 <div className="flex flex-wrap gap-x-6 gap-y-1">
                   {UPLOAD_STEPS.map((step, i) => (
                     <span key={step.fileType} className="flex items-center gap-1.5">
