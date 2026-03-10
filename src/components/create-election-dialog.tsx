@@ -244,13 +244,13 @@ export function CreateElectionDialog({
               className="w-full"
             />
             <p className="text-xs text-muted-foreground">
-              The date on which the election results were certified.
+              {electionsContent.createDialog.certificationDateHelp}
             </p>
           </div>
 
           {/* Original / Amended */}
           <div className="space-y-2">
-            <Label htmlFor="filing-type">Filing Type</Label>
+            <Label htmlFor="filing-type">{electionsContent.createDialog.filingTypeLabel}</Label>
             <Select
               value={filingType}
               onValueChange={(v) => setFilingType(v as "Original" | "Amended")}
@@ -259,8 +259,8 @@ export function CreateElectionDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Original">Original</SelectItem>
-                <SelectItem value="Amended">Amended</SelectItem>
+                <SelectItem value="Original">{electionsContent.createDialog.filingTypeOriginal}</SelectItem>
+                <SelectItem value="Amended">{electionsContent.createDialog.filingTypeAmended}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -268,7 +268,7 @@ export function CreateElectionDialog({
           {/* Amendment Date (only when Amended) */}
           {isAmended && (
             <div className="space-y-2">
-              <Label htmlFor="amendment-date">Amendment Date</Label>
+              <Label htmlFor="amendment-date">{electionsContent.createDialog.amendmentDateLabel}</Label>
               <Input
                 id="amendment-date"
                 type="date"
@@ -277,7 +277,7 @@ export function CreateElectionDialog({
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                The date this amended filing is being submitted.
+                {electionsContent.createDialog.amendmentDateHelp}
               </p>
             </div>
           )}
@@ -287,7 +287,7 @@ export function CreateElectionDialog({
             <div className="rounded-md bg-muted/50 border p-3">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-xs text-muted-foreground">
-                  Election Name (auto-generated)
+                  {electionsContent.createDialog.electionNameLabel}
                 </p>
                 <Button
                   type="button"
@@ -299,20 +299,19 @@ export function CreateElectionDialog({
                   {copied ? (
                     <>
                       <Check className="h-3 w-3" />
-                      Copied
+                      {electionsContent.createDialog.copiedButton}
                     </>
                   ) : (
                     <>
                       <Copy className="h-3 w-3" />
-                      Copy
+                      {electionsContent.createDialog.copyButton}
                     </>
                   )}
                 </Button>
               </div>
               <p className="font-medium text-sm break-words">{derivedName}</p>
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
-                You must enter this name into all of your submitted documents for
-                validation.
+                {electionsContent.createDialog.electionNameWarning}
               </p>
             </div>
           )}
@@ -331,16 +330,16 @@ export function CreateElectionDialog({
             onClick={() => handleOpenChange(false)}
             disabled={isSubmitting}
           >
-            Cancel
+            {commonContent.buttons.cancel}
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating...
+                {commonContent.loading.creating}
               </>
             ) : (
-              "Create Election Event"
+              electionsContent.createDialog.submitButton
             )}
           </Button>
         </DialogFooter>
