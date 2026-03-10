@@ -9,10 +9,47 @@
 'use server'
 
 import { randomUUID } from 'crypto';
+import { z } from 'zod';
 import { Storage } from '@google-cloud/storage';
 import { fileSchemas, type FieldSchema } from '@/lib/file-schemas';
 import { bq, DATASET, ensureSchema } from '@/lib/bigquery';
 import { convertShapefileToGeoJSON, validateGeoJSON } from '@/lib/shapefile-converter';
+
+// ---------------------------------------------------------------------------
+// Input validation schemas
+// ---------------------------------------------------------------------------
+
+const VALID_FILE_TYPES = ["poll-sites", "election-results", "voter-information", "district-maps"] as const;
+
+const createElectionEventSchema = z.object({
+  date: z.string().min(1).max(50),
+  electionType: z.string().min(1).max(100),
+  electionName: z.string().min(1).max(255),
+  electionAuthorityName: z.string().min(1).max(255),
+  electionAuthorityType: z.string().min(1).max(255),
+});
+
+const certifyNoElectionsSchema = z.object({
+  year: z.number().int().min(1900).max(2200),
+  electionAuthorityName: z.string().min(1).max(255),
+  electionAuthorityType: z.string().min(1).max(255),
+});
+
+const submitAttestationSchema = z.object({
+  electionEventId: z.string().uuid(),
+  fileType: z.enum(["poll-sites", "district-maps"]),
+  attestationType: z.enum(["no-change", "state-geo-accurate"]),
+  electionAuthorityName: z.string().min(1).max(255),
+  electionAuthorityType: z.string().min(1).max(255),
+});
+
+const uploadFileSchema = z.object({
+  fileType: z.enum(VALID_FILE_TYPES),
+  electionAuthorityName: z.string().min(1).max(255).nullable(),
+  electionAuthorityType: z.string().max(255).nullable(),
+  amendmentNotes: z.string().max(1000).nullable(),
+  electionEventId: z.string().uuid().nullable(),
+});
 
 // ---------------------------------------------------------------------------
 // Types
@@ -337,6 +374,12 @@ export async function createElectionEvent(data: {
   electionAuthorityType: string;
 }): Promise<{ success: boolean; message: string; id?: string }> {
   try {
+    const parsed = createElectionEventSchema.safeParse(data);
+    if (!parsed.success) {
+      return { success: false, message: 'Invalid input. Please check your entries and try again.' };
+    }
+    data = parsed.data;
+
     await ensureSchema();
 
     // Check for duplicate election events
@@ -380,11 +423,9 @@ export async function createElectionEvent(data: {
     };
   } catch (error: unknown) {
     console.error('Failed to create election event:', error);
-    const detail =
-      error instanceof Error ? error.message : 'Unknown error';
     return {
       success: false,
-      message: `Failed to create the election event: ${detail}`,
+      message: 'Something went wrong while creating the election event. Please try again.',
     };
   }
 }
@@ -522,10 +563,9 @@ export async function deleteElectionEvent(
     };
   } catch (error: unknown) {
     console.error('Failed to delete election event:', error);
-    const detail = error instanceof Error ? error.message : 'Unknown error';
     return {
       success: false,
-      message: `Failed to delete the election event: ${detail}`,
+      message: 'Something went wrong while deleting the election event. Please try again.',
     };
   }
 }
@@ -541,6 +581,12 @@ export async function certifyNoElections(data: {
   electionAuthorityType: string;
 }): Promise<{ success: boolean; message: string }> {
   try {
+    const parsed = certifyNoElectionsSchema.safeParse(data);
+    if (!parsed.success) {
+      return { success: false, message: 'Invalid input. Please check your entries and try again.' };
+    }
+    data = parsed.data;
+
     await ensureSchema();
 
     // Check for existing certification for this year + authority
@@ -717,6 +763,12 @@ export async function submitAttestation(data: {
   electionAuthorityType: string;
 }): Promise<{ success: boolean; message: string }> {
   try {
+    const parsed = submitAttestationSchema.safeParse(data);
+    if (!parsed.success) {
+      return { success: false, message: 'Invalid input. Please check your entries and try again.' };
+    }
+    data = parsed.data;
+
     await ensureSchema();
 
     const id = randomUUID();
@@ -1060,12 +1112,27 @@ async function performUpload(
 /** Public server action entry point called by client components to upload a file. */
 export async function uploadFile(formData: FormData): Promise<{ success: boolean; message: string }> {
   const file = formData.get('file') as File;
-  const fileType = formData.get('fileType') as string;
-  const fileName = file?.name ?? 'unknown';
-  const electionAuthorityName = formData.get('electionAuthorityName') as string | null;
-  const electionAuthorityType = formData.get('electionAuthorityType') as string | null;
-  const amendmentNotes = formData.get('amendmentNotes') as string | null;
-  const electionEventId = formData.get('electionEventId') as string | null;
+  const rawFileType = formData.get('fileType') as string;
+  const rawElectionAuthorityName = formData.get('electionAuthorityName') as string | null;
+  const rawElectionAuthorityType = formData.get('electionAuthorityType') as string | null;
+  const rawAmendmentNotes = formData.get('amendmentNotes') as string | null;
+  const rawElectionEventId = formData.get('electionEventId') as string | null;
+
+  const parsed = uploadFileSchema.safeParse({
+    fileType: rawFileType,
+    electionAuthorityName: rawElectionAuthorityName || null,
+    electionAuthorityType: rawElectionAuthorityType || null,
+    amendmentNotes: rawAmendmentNotes || null,
+    electionEventId: rawElectionEventId || null,
+  });
+  if (!parsed.success) {
+    return { success: false, message: 'Invalid upload parameters. Please try again.' };
+  }
+
+  const { fileType, electionAuthorityName, electionAuthorityType, amendmentNotes, electionEventId } = parsed.data;
+
+  // Sanitize filename: strip path traversal sequences and non-printable characters
+  const fileName = (file?.name ?? 'unknown').replace(/\.\.[/\\]/g, '').replace(/[^\x20-\x7E]/g, '_');
 
   const result = await performUpload(file, fileType);
 
@@ -1079,9 +1146,9 @@ export async function uploadFile(formData: FormData): Promise<{ success: boolean
       fileName,
       result.gcsPath,
       electionAuthorityName,
-      electionAuthorityType ?? '',
-      amendmentNotes ?? '',
-      electionEventId ?? undefined,
+      electionAuthorityType || '',
+      amendmentNotes || '',
+      electionEventId || undefined,
     );
 
     // Update election event file status
