@@ -3,8 +3,9 @@
  *
  * Initializes the BigQuery client using project credentials from the environment
  * and defines the operational dataset schema. The {@link ensureSchema} function
- * auto-provisions the dataset and 4 tables (election_events, submission_logs,
- * file_versions, no_elections_certifications) on first call.
+ * auto-provisions the dataset and tables (election_events, submission_logs,
+ * file_versions, no_elections_certifications, poll_sites_master,
+ * file_attestations) on first call.
  */
 
 import { BigQuery } from "@google-cloud/bigquery";
@@ -35,6 +36,7 @@ let _initialized = false;
  * - `submission_logs` -- audit trail of file upload attempts
  * - `file_versions`   -- versioned file upload history per election
  * - `no_elections_certifications` -- records when an authority certifies no elections held
+ * - `poll_sites_master` -- validated poll site data promoted from temp tables
  *
  * Subsequent calls are no-ops (guarded by an in-memory flag).
  */
@@ -139,6 +141,38 @@ export async function ensureSchema(): Promise<void> {
           { name: "election_authority_type", type: "STRING" },
           { name: "certified_at", type: "TIMESTAMP" },
           { name: "certified_by", type: "STRING" },
+        ],
+      },
+    });
+  }
+
+  // --- poll_sites_master ---
+  const pollSitesMasterTable = dataset.table("poll_sites_master");
+  const [psmExists] = await pollSitesMasterTable.exists();
+  if (!psmExists) {
+    await dataset.createTable("poll_sites_master", {
+      schema: {
+        fields: [
+          { name: "Election_Name", type: "STRING", mode: "REQUIRED" },
+          { name: "Municipality", type: "STRING", mode: "REQUIRED" },
+          { name: "MunicipalityType", type: "STRING", mode: "REQUIRED" },
+          { name: "Ward", type: "STRING" },
+          { name: "Precinct", type: "STRING" },
+          { name: "ElectionDistrict", type: "STRING", mode: "REQUIRED" },
+          { name: "HASNO", type: "STRING" },
+          { name: "PollSiteName", type: "STRING", mode: "REQUIRED" },
+          { name: "PS_Addr1", type: "STRING", mode: "REQUIRED" },
+          { name: "PS_Addr2", type: "STRING" },
+          { name: "PS_City", type: "STRING", mode: "REQUIRED" },
+          { name: "PS_State", type: "STRING", mode: "REQUIRED" },
+          { name: "PS_Zip", type: "STRING", mode: "REQUIRED" },
+          { name: "PS_Desg", type: "STRING", mode: "REQUIRED" },
+          { name: "_submission_id", type: "STRING" },
+          { name: "_election_event_id", type: "STRING" },
+          { name: "_file_version", type: "INTEGER" },
+          { name: "_row_number", type: "INTEGER" },
+          { name: "_loaded_at", type: "TIMESTAMP" },
+          { name: "_loaded_by", type: "STRING" },
         ],
       },
     });
