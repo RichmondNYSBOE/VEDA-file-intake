@@ -98,26 +98,28 @@ export async function insertFileVersion(params: {
   uploadedBy: string;
   electionEventId?: string;
 }): Promise<void> {
-  try {
-    await ensureSchema();
+  await ensureSchema();
 
-    // Find the latest version for this fileType + authority + event
-    let versionQuery = `SELECT IFNULL(MAX(version), 0) AS max_version FROM ${table('file_versions')} WHERE file_type = @fileType AND election_authority_name = @authorityName`;
-    const versionParams: Record<string, string> = {
-      fileType: params.fileType,
-      authorityName: params.electionAuthorityName,
-    };
-    if (params.electionEventId) {
-      versionQuery += ` AND election_event_id = @eventId`;
-      versionParams.eventId = params.electionEventId;
-    }
+  // Find the latest version for this fileType + authority + event
+  let versionQuery = `SELECT IFNULL(MAX(version), 0) AS max_version FROM ${table('file_versions')} WHERE file_type = @fileType AND election_authority_name = @authorityName`;
+  const versionParams: Record<string, string> = {
+    fileType: params.fileType,
+    authorityName: params.electionAuthorityName,
+  };
+  if (params.electionEventId) {
+    versionQuery += ` AND election_event_id = @eventId`;
+    versionParams.eventId = params.electionEventId;
+  }
 
-    const [versionRows] = await bq.query({ query: versionQuery, params: versionParams });
-    const maxVersion = Number((versionRows as Record<string, unknown>[])[0]?.max_version ?? 0);
-    const nextVersion = maxVersion + 1;
+  const [versionRows] = await bq.query({ query: versionQuery, params: versionParams });
+  const maxVersion = Number((versionRows as Record<string, unknown>[])[0]?.max_version ?? 0);
+  const nextVersion = maxVersion + 1;
 
-    // Mark all previous versions for this fileType + authority + event as inactive
-    if (maxVersion > 0) {
+  // Mark all previous versions for this fileType + authority + event as inactive.
+  // Isolated in its own try-catch so a failure here (e.g. rows still in the
+  // streaming buffer from before the DML migration) does not block the insert.
+  if (maxVersion > 0) {
+    try {
       let deactivateQuery = `UPDATE ${table('file_versions')} SET is_active = FALSE WHERE file_type = @fileType AND election_authority_name = @authorityName AND is_active = TRUE`;
       const deactivateParams: Record<string, string> = {
         fileType: params.fileType,
@@ -128,35 +130,35 @@ export async function insertFileVersion(params: {
         deactivateParams.eventId = params.electionEventId;
       }
       await bq.query({ query: deactivateQuery, params: deactivateParams });
+    } catch (error) {
+      console.error('Failed to deactivate prior file versions (continuing with insert):', error);
     }
-
-    // Insert new version record via DML for immediate consistency
-    const id = randomUUID();
-    const uploadedAt = new Date().toISOString();
-
-    const insertQuery = `INSERT INTO ${table('file_versions')} (id, file_type, file_name, gcs_path, version, uploaded_at, election_authority_name, election_authority_type, amendment_notes, is_active, uploaded_by, election_event_id)
-      VALUES (@id, @fileType, @fileName, @gcsPath, @version, @uploadedAt, @authorityName, @authorityType, @amendmentNotes, @isActive, @uploadedBy, @eventId)`;
-
-    await bq.query({
-      query: insertQuery,
-      params: {
-        id,
-        fileType: params.fileType,
-        fileName: params.fileName,
-        gcsPath: params.gcsPath,
-        version: nextVersion,
-        uploadedAt,
-        authorityName: params.electionAuthorityName,
-        authorityType: params.electionAuthorityType,
-        amendmentNotes: params.amendmentNotes || '',
-        isActive: true,
-        uploadedBy: params.uploadedBy,
-        eventId: params.electionEventId ?? null,
-      },
-    });
-  } catch (error) {
-    console.error('Failed to create file version record:', error);
   }
+
+  // Insert new version record via DML for immediate consistency
+  const id = randomUUID();
+  const uploadedAt = new Date().toISOString();
+
+  const insertQuery = `INSERT INTO ${table('file_versions')} (id, file_type, file_name, gcs_path, version, uploaded_at, election_authority_name, election_authority_type, amendment_notes, is_active, uploaded_by, election_event_id)
+    VALUES (@id, @fileType, @fileName, @gcsPath, @version, @uploadedAt, @authorityName, @authorityType, @amendmentNotes, @isActive, @uploadedBy, @eventId)`;
+
+  await bq.query({
+    query: insertQuery,
+    params: {
+      id,
+      fileType: params.fileType,
+      fileName: params.fileName,
+      gcsPath: params.gcsPath,
+      version: nextVersion,
+      uploadedAt,
+      authorityName: params.electionAuthorityName,
+      authorityType: params.electionAuthorityType,
+      amendmentNotes: params.amendmentNotes || '',
+      isActive: true,
+      uploadedBy: params.uploadedBy,
+      eventId: params.electionEventId ?? null,
+    },
+  });
 }
 
 /** Fetch all versions of a file type for an authority. */
