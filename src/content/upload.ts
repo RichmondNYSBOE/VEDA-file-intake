@@ -110,15 +110,11 @@ export const uploadContent = {
   },
 
   amendment: {
-    title: "Amendment Required",
-    subtitle: "Files have already been uploaded for this election event.",
-    warningTemplate: (electionName: string) =>
-      `You previously uploaded files for ${electionName}. Uploading new files will replace the existing submissions. You must acknowledge this is an amendment before proceeding.`,
+    inlineWarning:
+      "Uploading a new file will replace the current submission and create a new version (amendment).",
     notesLabel: "Amendment Notes (optional)",
     notesPlaceholder:
       "Briefly describe the reason for this amendment...",
-    acknowledgment:
-      "I acknowledge that I am amending a previous submission for this election event and that new files will replace existing uploads.",
   },
 
   toast: {
