@@ -6,7 +6,7 @@
  * section, and contact information for the NYS Board of Elections.
  */
 
-import { User, HelpCircle, BookOpen, FolderOpen, Phone, Mail } from "lucide-react";
+import { User, HelpCircle, BookOpen, FileText, FolderOpen, Phone, Mail } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -65,6 +65,19 @@ export function InfoSidebar() {
               </li>
             ))}
           </ul>
+        </CardContent>
+      </Card>
+
+      {/* User Guide */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            <CardTitle className="text-base">{sidebar.userGuide.title}</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          <p>{sidebar.userGuide.description}</p>
         </CardContent>
       </Card>
 

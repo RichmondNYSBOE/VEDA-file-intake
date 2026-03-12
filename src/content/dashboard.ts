@@ -82,6 +82,11 @@ export const dashboardContent = {
         "How do I correct a submission?",
       ],
     },
+    userGuide: {
+      title: "User Guide",
+      description:
+        "Step-by-step instructions for creating elections, uploading files, submitting attestations, and amending submissions.",
+    },
     dataDictionary: {
       title: "Data Dictionary",
       description:
