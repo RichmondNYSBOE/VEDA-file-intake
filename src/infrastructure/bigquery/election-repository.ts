@@ -8,7 +8,6 @@
 import type { ElectionEvent, ElectionEventFileStatus } from '@/domain/types';
 import {
   bq,
-  DATASET,
   ensureSchema,
   table,
   DEFAULT_FILE_STATUS,
@@ -46,18 +45,39 @@ export async function insertElectionEvent(params: {
 }): Promise<void> {
   try {
     await ensureSchema();
-    const row = {
-      id: params.id,
-      date: params.date,
-      election_type: params.electionType,
-      election_name: params.electionName,
-      election_authority_name: params.electionAuthorityName,
-      election_authority_type: params.electionAuthorityType,
-      created_at: new Date().toISOString(),
-      created_by: params.createdBy,
-      files: serializeFilesRecord(params.files),
-    };
-    await bq.dataset(DATASET).table('election_events').insert([row]);
+    const createdAt = new Date().toISOString();
+    const filesParam = serializeFilesRecord(params.files);
+
+    const query = `INSERT INTO ${table('election_events')} (id, date, election_type, election_name, election_authority_name, election_authority_type, created_at, created_by, files)
+      VALUES (@id, @date, @electionType, @electionName, @authorityName, @authorityType, @createdAt, @createdBy, @files)`;
+
+    await bq.query({
+      query,
+      params: {
+        id: params.id,
+        date: params.date,
+        electionType: params.electionType,
+        electionName: params.electionName,
+        authorityName: params.electionAuthorityName,
+        authorityType: params.electionAuthorityType,
+        createdAt,
+        createdBy: params.createdBy,
+        files: filesParam,
+      },
+      types: {
+        files: [
+          {
+            file_type: 'STRING',
+            uploaded: 'BOOL',
+            file_name: 'STRING',
+            uploaded_at: 'STRING',
+            uploaded_by: 'STRING',
+            version: 'INT64',
+            gcs_path: 'STRING',
+          },
+        ],
+      },
+    });
   } catch (error) {
     console.error('Failed to insert election event:', error);
     throw error;
@@ -123,32 +143,28 @@ export async function updateElectionFiles(
   id: string,
   files: Record<string, ElectionEventFileStatus>,
 ): Promise<void> {
-  try {
-    await ensureSchema();
-    const query = `UPDATE ${table('election_events')} SET files = @files WHERE id = @id`;
-    await bq.query({
-      query,
-      params: {
-        id,
-        files: serializeFilesRecord(files),
-      },
-      types: {
-        files: [
-          {
-            file_type: 'STRING',
-            uploaded: 'BOOL',
-            file_name: 'STRING',
-            uploaded_at: 'STRING',
-            uploaded_by: 'STRING',
-            version: 'INT64',
-            gcs_path: 'STRING',
-          },
-        ],
-      },
-    });
-  } catch (error) {
-    console.error('Failed to update election event file status:', error);
-  }
+  await ensureSchema();
+  const query = `UPDATE ${table('election_events')} SET files = @files WHERE id = @id`;
+  await bq.query({
+    query,
+    params: {
+      id,
+      files: serializeFilesRecord(files),
+    },
+    types: {
+      files: [
+        {
+          file_type: 'STRING',
+          uploaded: 'BOOL',
+          file_name: 'STRING',
+          uploaded_at: 'STRING',
+          uploaded_by: 'STRING',
+          version: 'INT64',
+          gcs_path: 'STRING',
+        },
+      ],
+    },
+  });
 }
 
 /** Delete an election event by ID. */
