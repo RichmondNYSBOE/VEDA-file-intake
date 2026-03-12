@@ -50,7 +50,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -124,8 +123,7 @@ export function UploadWizard({
   const [dragActive, setDragActive] = useState(false);
   const [mapping, setMapping] = useState<MappingState>(INITIAL_MAPPING_STATE);
   const [showMappingModal, setShowMappingModal] = useState(false);
-  const [amendmentAcknowledged, setAmendmentAcknowledged] = useState(false);
-  const [amendmentNotes, setAmendmentNotes] = useState("");
+  const [stepAmendmentNotes, setStepAmendmentNotes] = useState("");
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [pasteContent, setPasteContent] = useState("");
   const [inputMode, setInputMode] = useState<"file" | "paste">("file");
@@ -133,12 +131,6 @@ export function UploadWizard({
   const [isAttesting, setIsAttesting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-
-  // Detect if this is a returning upload (event already has uploads)
-  const hasExistingUploads = UPLOAD_STEPS.some(
-    (s) => initialEvent.files[s.fileType]?.uploaded,
-  );
-  const requiresAmendment = hasExistingUploads && !amendmentAcknowledged;
 
   const step = UPLOAD_STEPS[currentStep];
   const isCSV = step.isCSV;
@@ -345,7 +337,7 @@ export function UploadWizard({
       formData.append("electionAuthorityName", electionAuthorityName);
       formData.append("electionAuthorityType", electionAuthorityType);
       formData.append("electionEventId", event.id);
-      if (amendmentNotes) formData.append("amendmentNotes", amendmentNotes);
+      if (isStepUploaded && stepAmendmentNotes) formData.append("amendmentNotes", stepAmendmentNotes);
 
       const result = await uploadFile(formData);
 
@@ -381,6 +373,7 @@ export function UploadWizard({
     setParsedData(null);
     setPasteContent("");
     setInputMode("file");
+    setStepAmendmentNotes("");
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -522,43 +515,7 @@ export function UploadWizard({
         </Alert>
       )}
 
-      {/* Amendment acknowledgment gate */}
-      {requiresAmendment && (
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                <FileEdit className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold">{uploadContent.amendment.title}</h3>
-                <p className="text-sm text-muted-foreground">{uploadContent.amendment.subtitle}</p>
-              </div>
-            </div>
-            <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 mb-4">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <AlertDescription className="text-amber-700 dark:text-amber-400">
-                {uploadContent.amendment.warningTemplate(event.electionName)}
-              </AlertDescription>
-            </Alert>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="amendment-notes">{uploadContent.amendment.notesLabel}</Label>
-                <Textarea id="amendment-notes" placeholder={uploadContent.amendment.notesPlaceholder} value={amendmentNotes} onChange={(e) => setAmendmentNotes(e.target.value)} rows={3} />
-              </div>
-              <div className="flex items-start gap-2">
-                <Checkbox id="amendment-ack" onCheckedChange={(checked) => { if (checked === true) setAmendmentAcknowledged(true); }} />
-                <Label htmlFor="amendment-ack" className="text-sm leading-snug cursor-pointer">
-                  {uploadContent.amendment.acknowledgment}
-                </Label>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!requiresAmendment && (
-        <div className="flex flex-col lg:flex-row gap-6">
+      <div className="flex flex-col lg:flex-row gap-6">
           {/* Left sidebar — step navigation */}
           <div className="w-full lg:w-64 flex-shrink-0">
             <Card>
@@ -599,6 +556,27 @@ export function UploadWizard({
                       </AlertDescription>
                     </Alert>
                     <p className="text-sm text-muted-foreground">{uploadContent.fileSelection.replaceFileHint}</p>
+                    {/* Inline amendment warning — shown only when a replacement file is selected */}
+                    {(file || (parsedData && inputMode === "paste")) && (
+                      <div className="space-y-3">
+                        <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+                          <FileEdit className="h-4 w-4 text-amber-600" />
+                          <AlertDescription className="text-amber-700 dark:text-amber-400">
+                            {uploadContent.amendment.inlineWarning}
+                          </AlertDescription>
+                        </Alert>
+                        <div className="space-y-2">
+                          <Label htmlFor="step-amendment-notes">{uploadContent.amendment.notesLabel}</Label>
+                          <Textarea
+                            id="step-amendment-notes"
+                            placeholder={uploadContent.amendment.notesPlaceholder}
+                            value={stepAmendmentNotes}
+                            onChange={(e) => setStepAmendmentNotes(e.target.value)}
+                            rows={2}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -857,7 +835,6 @@ export function UploadWizard({
             )}
           </div>
         </div>
-      )}
 
       {/* Field mapping modal */}
       {mapping.result && schema && (
