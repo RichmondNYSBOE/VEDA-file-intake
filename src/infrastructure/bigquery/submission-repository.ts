@@ -64,7 +64,7 @@ export async function fetchSubmissionLogs(electionEventId?: string): Promise<Sub
       query = `SELECT * FROM ${table('submission_logs')} ORDER BY timestamp DESC LIMIT 50`;
     }
 
-    const [rows] = await bq.query({ query, params });
+    const [rows] = await bq.query({ query, params, useQueryCache: false });
 
     return (rows as Record<string, unknown>[]).map((row) => ({
       id: String(row.id ?? ''),

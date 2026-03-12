@@ -179,10 +179,14 @@ export function UploadWizard({
   const fileList = form.watch("file");
   const file = fileList?.[0] as File | undefined;
 
-  // Load submission logs
-  useEffect(() => {
+  // Load submission logs from server
+  const refreshLogs = useCallback(() => {
     getSubmissionLogs(initialEvent.id).then(setLogs);
   }, [initialEvent.id]);
+
+  useEffect(() => {
+    refreshLogs();
+  }, [refreshLogs]);
 
   // Check attestation eligibility for poll-sites and district-maps
   useEffect(() => {
@@ -341,16 +345,8 @@ export function UploadWizard({
 
       const result = await uploadFile(formData);
 
-      setLogs((prev) => [{
-        id: Date.now().toString(),
-        timestamp: new Date().toISOString(),
-        fileName,
-        fileType: step.fileType,
-        success: result.success,
-        message: result.message,
-        uploadedBy: "Ryan Richmond",
-        electionEventId: event.id,
-      }, ...prev]);
+      // Refresh logs from server to ensure persistence
+      refreshLogs();
 
       if (result.success) {
         toast({ title: uploadContent.toast.uploadSuccessTitle, description: result.message });
@@ -423,6 +419,9 @@ export function UploadWizard({
       electionAuthorityType,
     });
 
+    // Refresh logs from server to ensure persistence
+    refreshLogs();
+
     if (result.success) {
       toast({ title: uploadContent.attestation.attestationRecorded, description: result.message });
       const attestLabel =
@@ -436,16 +435,6 @@ export function UploadWizard({
           [fileType]: { uploaded: true, fileName: attestLabel, uploadedAt: new Date().toISOString(), uploadedBy: "Ryan Richmond" },
         },
       }));
-      setLogs((prev) => [{
-        id: Date.now().toString(),
-        timestamp: new Date().toISOString(),
-        fileName: attestLabel,
-        fileType,
-        success: true,
-        message: result.message,
-        uploadedBy: "Ryan Richmond",
-        electionEventId: event.id,
-      }, ...prev]);
       const nextIncomplete = UPLOAD_STEPS.findIndex((s, i) => i > currentStep && !(event.files[s.fileType]?.uploaded));
       if (nextIncomplete !== -1) setCurrentStep(nextIncomplete);
     } else {
