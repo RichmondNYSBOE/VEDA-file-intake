@@ -108,23 +108,21 @@ export async function getElectionEvent(
 // Update
 // ---------------------------------------------------------------------------
 
-/** Update file status within an election event. */
+/** Update file status within an election event. Throws on failure. */
 export async function updateElectionEventFileStatus(
   electionEventId: string,
   fileType: string,
   status: ElectionEventFileStatus,
 ): Promise<void> {
-  try {
-    const current = await fetchElectionEvent(electionEventId);
-    if (!current) return;
-
-    // Merge the updated file status
-    const updatedFiles = { ...current.files, [fileType]: status };
-
-    await updateElectionFiles(electionEventId, updatedFiles);
-  } catch (error) {
-    console.error('Failed to update election event file status:', error);
+  const current = await fetchElectionEvent(electionEventId);
+  if (!current) {
+    throw new Error(`Election event ${electionEventId} not found`);
   }
+
+  // Merge the updated file status
+  const updatedFiles = { ...current.files, [fileType]: status };
+
+  await updateElectionFiles(electionEventId, updatedFiles);
 }
 
 // ---------------------------------------------------------------------------

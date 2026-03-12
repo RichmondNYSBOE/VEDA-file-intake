@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'crypto';
 import type { AttestationType } from '@/domain/types';
-import { bq, DATASET, ensureSchema, table } from '@/infrastructure/bigquery/client';
+import { bq, ensureSchema, table } from '@/infrastructure/bigquery/client';
 
 /**
  * Check if authority has a prior upload of a file type (excluding current event).
@@ -90,17 +90,25 @@ export async function insertAttestation(params: {
 }): Promise<void> {
   try {
     await ensureSchema();
-    const row = {
-      id: randomUUID(),
-      election_event_id: params.electionEventId,
-      file_type: params.fileType,
-      attestation_type: params.attestationType,
-      election_authority_name: params.electionAuthorityName,
-      election_authority_type: params.electionAuthorityType,
-      attested_at: new Date().toISOString(),
-      attested_by: params.attestedBy,
-    };
-    await bq.dataset(DATASET).table('file_attestations').insert([row]);
+    const id = randomUUID();
+    const attestedAt = new Date().toISOString();
+
+    const query = `INSERT INTO ${table('file_attestations')} (id, election_event_id, file_type, attestation_type, election_authority_name, election_authority_type, attested_at, attested_by)
+      VALUES (@id, @eventId, @fileType, @attestationType, @authorityName, @authorityType, @attestedAt, @attestedBy)`;
+
+    await bq.query({
+      query,
+      params: {
+        id,
+        eventId: params.electionEventId,
+        fileType: params.fileType,
+        attestationType: params.attestationType,
+        authorityName: params.electionAuthorityName,
+        authorityType: params.electionAuthorityType,
+        attestedAt,
+        attestedBy: params.attestedBy,
+      },
+    });
   } catch (error) {
     console.error('Failed to insert attestation:', error);
     throw error;

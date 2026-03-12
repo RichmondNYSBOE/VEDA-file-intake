@@ -53,7 +53,7 @@ export async function uploadFile(params: {
     electionEventId,
   );
 
-  // Track file version on successful upload
+  // Track file version and update event status on successful upload
   if (result.success && result.gcsPath && electionAuthorityName) {
     await createFileVersion(
       fileType,
@@ -67,14 +67,22 @@ export async function uploadFile(params: {
 
     // Update election event file status
     if (electionEventId) {
-      await updateElectionEventFileStatus(electionEventId, fileType, {
-        uploaded: true,
-        fileName,
-        uploadedAt: new Date().toISOString(),
-        uploadedBy: CURRENT_USER,
-        version: 1,
-        gcsPath: result.gcsPath,
-      });
+      try {
+        await updateElectionEventFileStatus(electionEventId, fileType, {
+          uploaded: true,
+          fileName,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: CURRENT_USER,
+          version: 1,
+          gcsPath: result.gcsPath,
+        });
+      } catch (error) {
+        console.error('Failed to update election event file status:', error);
+        return {
+          success: false,
+          message: validationMessages.genericUploadError,
+        };
+      }
     }
   }
 

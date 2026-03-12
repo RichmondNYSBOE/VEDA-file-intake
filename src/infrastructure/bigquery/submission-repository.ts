@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'crypto';
 import type { SubmissionLogEntry, FileVersionEntry } from '@/domain/types';
-import { bq, DATASET, ensureSchema, table, CURRENT_USER } from '@/infrastructure/bigquery/client';
+import { bq, ensureSchema, table } from '@/infrastructure/bigquery/client';
 
 // ---------------------------------------------------------------------------
 // Submission logs
@@ -24,18 +24,27 @@ export async function insertSubmissionLog(params: {
 }): Promise<void> {
   try {
     await ensureSchema();
-    const row = {
-      id: randomUUID(),
-      timestamp: new Date().toISOString(),
-      file_name: params.fileName,
-      file_type: params.fileType,
-      success: params.success,
-      message: params.message,
-      uploaded_by: params.uploadedBy,
-      election_event_id: params.electionEventId ?? null,
-      scan_status: params.success ? 'pending_scan' : null,
-    };
-    await bq.dataset(DATASET).table('submission_logs').insert([row]);
+    const id = randomUUID();
+    const timestamp = new Date().toISOString();
+    const scanStatus = params.success ? 'pending_scan' : null;
+
+    const query = `INSERT INTO ${table('submission_logs')} (id, timestamp, file_name, file_type, success, message, uploaded_by, election_event_id, scan_status)
+      VALUES (@id, @timestamp, @fileName, @fileType, @success, @message, @uploadedBy, @eventId, @scanStatus)`;
+
+    await bq.query({
+      query,
+      params: {
+        id,
+        timestamp,
+        fileName: params.fileName,
+        fileType: params.fileType,
+        success: params.success,
+        message: params.message,
+        uploadedBy: params.uploadedBy,
+        eventId: params.electionEventId ?? null,
+        scanStatus,
+      },
+    });
   } catch (error) {
     console.error('Failed to log submission to BigQuery:', error);
   }
@@ -121,22 +130,30 @@ export async function insertFileVersion(params: {
       await bq.query({ query: deactivateQuery, params: deactivateParams });
     }
 
-    // Insert new version record
-    const row = {
-      id: randomUUID(),
-      file_type: params.fileType,
-      file_name: params.fileName,
-      gcs_path: params.gcsPath,
-      version: nextVersion,
-      uploaded_at: new Date().toISOString(),
-      election_authority_name: params.electionAuthorityName,
-      election_authority_type: params.electionAuthorityType,
-      amendment_notes: params.amendmentNotes || '',
-      is_active: true,
-      uploaded_by: params.uploadedBy,
-      election_event_id: params.electionEventId ?? null,
-    };
-    await bq.dataset(DATASET).table('file_versions').insert([row]);
+    // Insert new version record via DML for immediate consistency
+    const id = randomUUID();
+    const uploadedAt = new Date().toISOString();
+
+    const insertQuery = `INSERT INTO ${table('file_versions')} (id, file_type, file_name, gcs_path, version, uploaded_at, election_authority_name, election_authority_type, amendment_notes, is_active, uploaded_by, election_event_id)
+      VALUES (@id, @fileType, @fileName, @gcsPath, @version, @uploadedAt, @authorityName, @authorityType, @amendmentNotes, @isActive, @uploadedBy, @eventId)`;
+
+    await bq.query({
+      query: insertQuery,
+      params: {
+        id,
+        fileType: params.fileType,
+        fileName: params.fileName,
+        gcsPath: params.gcsPath,
+        version: nextVersion,
+        uploadedAt,
+        authorityName: params.electionAuthorityName,
+        authorityType: params.electionAuthorityType,
+        amendmentNotes: params.amendmentNotes || '',
+        isActive: true,
+        uploadedBy: params.uploadedBy,
+        eventId: params.electionEventId ?? null,
+      },
+    });
   } catch (error) {
     console.error('Failed to create file version record:', error);
   }
