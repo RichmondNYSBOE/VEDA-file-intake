@@ -135,3 +135,38 @@ export async function uploadFile(formData: FormData) {
     electionEventId: electionEventId ?? undefined,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Signed-URL upload (large files — browser uploads directly to GCS)
+// ---------------------------------------------------------------------------
+
+export async function getSignedUploadUrl(formData: FormData) {
+  const fileType = formData.get('fileType') as string;
+  const fileName = formData.get('fileName') as string;
+  const contentType = formData.get('contentType') as string;
+  const fileSize = Number(formData.get('fileSize'));
+
+  return uploadService.requestSignedUrl({ fileType, fileName, contentType, fileSize });
+}
+
+export async function confirmUpload(formData: FormData) {
+  const destination = formData.get('destination') as string;
+  const fileType = formData.get('fileType') as string;
+  const fileName = formData.get('fileName') as string;
+  const fileSize = Number(formData.get('fileSize'));
+  const electionAuthorityName = formData.get('electionAuthorityName') as string | null;
+  const electionAuthorityType = formData.get('electionAuthorityType') as string | null;
+  const amendmentNotes = formData.get('amendmentNotes') as string | null;
+  const electionEventId = formData.get('electionEventId') as string | null;
+
+  return uploadService.confirmFileUpload({
+    destination,
+    fileType,
+    fileName,
+    fileSize,
+    electionAuthorityName: electionAuthorityName ?? undefined,
+    electionAuthorityType: electionAuthorityType ?? undefined,
+    amendmentNotes: amendmentNotes ?? undefined,
+    electionEventId: electionEventId ?? undefined,
+  });
+}

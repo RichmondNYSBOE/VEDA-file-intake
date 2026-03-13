@@ -11,11 +11,17 @@
 import { fileSchemas } from '@/lib/file-schemas';
 import { convertShapefileToGeoJSON, validateGeoJSON } from '@/lib/shapefile-converter';
 import { validateCsvRows } from '@/domain/validation/rules';
-import { uploadToGCS, getGCSBucketName } from '@/infrastructure/storage/gcs-client';
+import { uploadToGCS, getGCSBucketName, generateSignedUploadUrl, readFileHead } from '@/infrastructure/storage/gcs-client';
 import { CURRENT_USER } from '@/infrastructure/bigquery/client';
 import { logSubmission, createFileVersion } from '@/services/audit-service';
 import { updateElectionEventFileStatus } from '@/services/election-service';
 import { validationMessages } from '@/content/validation-messages';
+
+/** Maximum file size for data files (CSV): 1 GB */
+const MAX_DATA_FILE_SIZE = 1024 * 1024 * 1024;
+
+/** Maximum file size for district maps: 5 MB */
+const MAX_DISTRICT_MAP_SIZE = 5 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -111,13 +117,16 @@ async function performUpload(
     return { success: false, message: validationMessages.noFileProvided };
   }
 
-  if (file.size > 5 * 1024 * 1024) {
-    return { success: false, message: validationMessages.fileTooLarge };
-  }
-
   // District maps: accept .zip (shapefile) / .geojson / .json — convert to GeoJSON
   if (fileType === 'district-maps') {
+    if (file.size > MAX_DISTRICT_MAP_SIZE) {
+      return { success: false, message: validationMessages.fileTooLargeDistrictMaps };
+    }
     return handleDistrictMapUpload(file, fileType, bucketName);
+  }
+
+  if (file.size > MAX_DATA_FILE_SIZE) {
+    return { success: false, message: validationMessages.fileTooLarge };
   }
 
   // CSV validation path
@@ -282,5 +291,165 @@ async function handleCsvUpload(
       success: false,
       message: validationMessages.genericUploadError,
     };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Signed-URL upload flow (for large files — browser uploads directly to GCS)
+// ---------------------------------------------------------------------------
+
+/** Generate a signed upload URL so the browser can upload directly to GCS. */
+export async function requestSignedUrl(params: {
+  fileType: string;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+}): Promise<{ success: boolean; url?: string; destination?: string; error?: string }> {
+  try {
+    const bucketName = getGCSBucketName();
+    if (!bucketName) {
+      return { success: false, error: validationMessages.serverNotConfigured };
+    }
+
+    const { fileType, fileName, contentType, fileSize } = params;
+
+    if (!fileName) {
+      return { success: false, error: validationMessages.noFileProvided };
+    }
+
+    const maxSize = fileType === 'district-maps' ? MAX_DISTRICT_MAP_SIZE : MAX_DATA_FILE_SIZE;
+    if (fileSize > maxSize) {
+      const msg = fileType === 'district-maps'
+        ? validationMessages.fileTooLargeDistrictMaps
+        : validationMessages.fileTooLarge;
+      return { success: false, error: msg };
+    }
+
+    const schema = fileSchemas[fileType];
+    if (!schema && fileType !== 'district-maps') {
+      return { success: false, error: validationMessages.unrecognizedFileType(fileType) };
+    }
+
+    const destination = `uploads/${fileType}/${Date.now()}-${fileName}`;
+    const result = await generateSignedUploadUrl({
+      bucketName,
+      destination,
+      contentType,
+      metadata: {
+        'veda-file-type': fileType,
+        'veda-upload-timestamp': new Date().toISOString(),
+        'veda-scan-status': 'pending',
+      },
+    });
+
+    return { success: true, url: result.url, destination: result.destination };
+  } catch (error: unknown) {
+    console.error('Error generating signed upload URL:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('Could not refresh access token')) {
+      return { success: false, error: validationMessages.gcsConnectionError };
+    }
+    return { success: false, error: validationMessages.genericUploadError };
+  }
+}
+
+/** Confirm a direct-to-GCS upload: validate the file, log audit, create version. */
+export async function confirmFileUpload(params: {
+  destination: string;
+  fileType: string;
+  fileName: string;
+  fileSize: number;
+  electionAuthorityName?: string;
+  electionAuthorityType?: string;
+  amendmentNotes?: string;
+  electionEventId?: string;
+}): Promise<{ success: boolean; message: string }> {
+  const {
+    destination,
+    fileType,
+    fileName,
+    fileSize,
+    electionAuthorityName,
+    electionAuthorityType,
+    amendmentNotes,
+    electionEventId,
+  } = params;
+
+  try {
+    const bucketName = getGCSBucketName();
+    if (!bucketName) {
+      return { success: false, message: validationMessages.serverNotConfigured };
+    }
+
+    // Validate CSV headers + sample rows from the uploaded file
+    const schema = fileSchemas[fileType];
+    if (!schema) {
+      return { success: false, message: validationMessages.unrecognizedFileType(fileType) };
+    }
+
+    const headBuffer = await readFileHead(bucketName, destination);
+    const headContent = headBuffer.toString('utf-8');
+    const lines = headContent.split('\n').filter(line => line.trim() !== '');
+
+    const validation = validateCsvRows(lines, schema);
+    if (!validation.valid) {
+      return { success: false, message: validation.message! };
+    }
+
+    // Estimate row count from file size (header line from head + extrapolate)
+    const headerLine = lines[0] || '';
+    const avgRowBytes = lines.length > 1
+      ? headBuffer.length / lines.length
+      : headerLine.length + 1;
+    const estimatedRowCount = Math.max(1, Math.round(fileSize / avgRowBytes) - 1);
+
+    const friendlyFileType = fileType.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const successMessage = validationMessages.uploadSuccess(friendlyFileType, estimatedRowCount);
+
+    // Audit logging
+    await logSubmission(fileName, fileType, true, successMessage, electionEventId);
+
+    // Track file version and update event status
+    if (electionAuthorityName) {
+      await createFileVersion(
+        fileType,
+        fileName,
+        destination,
+        electionAuthorityName,
+        electionAuthorityType ?? '',
+        amendmentNotes ?? '',
+        electionEventId,
+      );
+
+      if (electionEventId) {
+        await updateElectionEventFileStatus(electionEventId, fileType, {
+          uploaded: true,
+          fileName,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: CURRENT_USER,
+          version: 1,
+          gcsPath: destination,
+        });
+      }
+    }
+
+    return { success: true, message: successMessage };
+  } catch (error: unknown) {
+    console.error('Error confirming upload:', error);
+
+    // Log the failure
+    await logSubmission(
+      fileName,
+      fileType,
+      false,
+      validationMessages.genericUploadError,
+      electionEventId,
+    );
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('Could not refresh access token')) {
+      return { success: false, message: validationMessages.gcsConnectionError };
+    }
+    return { success: false, message: validationMessages.genericUploadError };
   }
 }

@@ -137,6 +137,51 @@ export async function parseFile(file: File): Promise<ParsedData> {
 }
 
 // ---------------------------------------------------------------------------
+// Chunk-only parser (for large CSV files)
+// ---------------------------------------------------------------------------
+
+/** Size threshold above which we only read the head of a CSV. */
+const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024; // 10 MB
+
+/** Default number of bytes to read from a large file for header validation. */
+const HEAD_BYTES = 65536; // 64 KB
+
+/**
+ * Parse only the first chunk of a file. For CSV files larger than 10 MB this
+ * avoids loading hundreds of megabytes into browser memory just for header
+ * validation and data preview.
+ *
+ * For Excel/JSON files (which are unlikely to be huge) this falls back to
+ * the full {@link parseFile}.
+ */
+export async function parseFileHead(file: File): Promise<ParsedData> {
+  const name = file.name.toLowerCase();
+
+  // Excel and JSON: always parse fully (they won't be 500 MB)
+  if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".json")) {
+    return parseFile(file);
+  }
+
+  // Small CSVs: parse fully for complete data preview
+  if (file.size <= LARGE_FILE_THRESHOLD) {
+    return parseFile(file);
+  }
+
+  // Large CSV: read only the first chunk
+  const blob = file.slice(0, HEAD_BYTES);
+  const text = await blob.text();
+
+  // Drop the last line — it's likely truncated mid-row
+  const lines = text.split("\n");
+  if (lines.length > 1) {
+    lines.pop();
+  }
+  const cleanText = lines.join("\n");
+
+  return parseCsvString(cleanText);
+}
+
+// ---------------------------------------------------------------------------
 // Convert ParsedData back to CSV string for upload
 // ---------------------------------------------------------------------------
 

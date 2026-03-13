@@ -114,14 +114,39 @@ resource "google_project_iam_member" "cloudbuild_eventarc_admin" {
 }
 
 # ---------------------------------------------------------------------------
-# GCS Buckets — already created manually:
-#   - nysboe-veda-interim-uploads  (unscanned / upload target)
+# GCS Buckets
+#
+# The unscanned (upload) bucket is managed here for CORS configuration,
+# which is required for browser-direct uploads via signed URLs.
+# The clean and quarantine buckets were created manually:
 #   - nysboe_veda_clean            (post-scan clean files)
 #   - nysboe_veda_quarantine       (infected / rejected files)
+#
+# NOTE: Import the existing bucket before first apply:
+#   terraform import google_storage_bucket.unscanned nysboe-veda-interim-uploads
 #
 # Recommended: enable 90-day lifecycle on quarantine bucket and versioning
 # on both new buckets via the Console if not already set.
 # ---------------------------------------------------------------------------
+
+resource "google_storage_bucket" "unscanned" {
+  name     = var.unscanned_bucket_name
+  location = var.region
+  project  = var.project_id
+
+  # Required for browser-direct uploads via GCS signed URLs
+  cors {
+    origin          = var.cors_allowed_origins
+    method          = ["PUT", "POST", "OPTIONS"]
+    response_header = ["Content-Type", "x-goog-resumable", "Content-Length"]
+    max_age_seconds = 3600
+  }
+
+  # Preserve existing bucket settings when importing
+  lifecycle {
+    prevent_destroy = true
+  }
+}
 
 # ---------------------------------------------------------------------------
 # Cloud Run — Malware Scanner Service

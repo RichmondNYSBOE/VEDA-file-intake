@@ -24,7 +24,7 @@ export const uploadContent = {
     },
     dragDrop: {
       prompt: "Click to select a file or drag and drop",
-      csvFormats: "CSV, Excel (.xlsx, .xls), or JSON — up to 5 MB",
+      csvFormats: "CSV, Excel (.xlsx, .xls), or JSON — up to 1 GB",
       districtMapsFormats:
         ".zip (shapefile — auto-converted to GeoJSON) or .geojson, up to 5 MB",
     },
@@ -68,7 +68,7 @@ export const uploadContent = {
     csvFileType: "Please upload a .csv, .xlsx, .xls, or .json file.",
     districtMapsFileType:
       "Please upload a .zip (shapefile) or .geojson file.",
-    fileTooLarge: "This file is too large. Maximum size is 5 MB.",
+    fileTooLarge: "This file is too large. Maximum size is 1 GB for data files and 5 MB for district maps.",
     selectFile: "Please select a file.",
   },
 

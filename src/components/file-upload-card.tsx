@@ -50,14 +50,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB
 
 const formSchema = z.object({
   file: z
     .any()
     .refine((files) => files?.length === 1, "File is required.")
     .refine((files) => files?.[0]?.type === "text/csv", "Only .csv files are accepted.")
-    .refine((files) => files?.[0]?.size <= MAX_FILE_SIZE, `Max file size is 5MB.`),
+    .refine((files) => files?.[0]?.size <= MAX_FILE_SIZE, `Max file size is 1 GB.`),
   fileType: z.string(),
 });
 

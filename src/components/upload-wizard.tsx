@@ -14,6 +14,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
   uploadFile,
+  getSignedUploadUrl,
+  confirmUpload,
   getSubmissionLogs,
   checkAttestationEligibility,
   submitAttestation,
@@ -27,7 +29,7 @@ import {
   reorderCsv,
   type MatchResult,
 } from "@/lib/header-matching";
-import { parseFile, parseTabDelimited, toCsvString, type ParsedData } from "@/lib/file-parser";
+import { parseFileHead, parseTabDelimited, toCsvString, type ParsedData } from "@/lib/file-parser";
 import { UPLOAD_STEPS } from "@/lib/election-types";
 import { FieldMappingModal } from "@/components/field-mapping-modal";
 import { DataPreview } from "@/components/data-preview";
@@ -129,6 +131,7 @@ export function UploadWizard({
   const [inputMode, setInputMode] = useState<"file" | "paste">("file");
   const [attestationEligibility, setAttestationEligibility] = useState<Record<string, boolean>>({});
   const [isAttesting, setIsAttesting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -164,7 +167,10 @@ export function UploadWizard({
           : uploadContent.validation.districtMapsFileType,
       )
       .refine(
-        (files: FileList | undefined) => (files?.[0]?.size ?? 0) <= 5 * 1024 * 1024,
+        (files: FileList | undefined) => {
+          const maxSize = isCSV ? 1024 * 1024 * 1024 : 5 * 1024 * 1024; // 1 GB for data, 5 MB for maps
+          return (files?.[0]?.size ?? 0) <= maxSize;
+        },
         uploadContent.validation.fileTooLarge,
       ),
   });
@@ -241,7 +247,7 @@ export function UploadWizard({
     let cancelled = false;
     (async () => {
       try {
-        const data = await parseFile(file);
+        const data = await parseFileHead(file);
         if (cancelled) return;
         setParsedData(data);
         analyzeData(data);
@@ -273,8 +279,9 @@ export function UploadWizard({
 
   // Can upload?
   const mappingReady = mapping.status === "exact" || mapping.status === "auto-resolved" || mapping.status === "confirmed";
+  const isUploading = isPending || uploadProgress !== null;
   const canUpload = (() => {
-    if (isPending) return false;
+    if (isUploading) return false;
     if (inputMode === "paste") {
       return !!parsedData && parsedData.rows.length > 0 && mappingReady;
     }
@@ -324,6 +331,78 @@ export function UploadWizard({
     return { fileToUpload: file, fileName };
   };
 
+  // Handle upload result (shared by both flows)
+  const handleUploadResult = (result: { success: boolean; message: string }, fileName: string) => {
+    setLogs((prev) => [{
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      fileName,
+      fileType: step.fileType,
+      success: result.success,
+      message: result.message,
+      uploadedBy: "Ryan Richmond",
+      electionEventId: event.id,
+    }, ...prev]);
+
+    if (result.success) {
+      toast({ title: uploadContent.toast.uploadSuccessTitle, description: result.message });
+      setEvent((prev) => ({
+        ...prev,
+        files: { ...prev.files, [step.fileType]: { uploaded: true, fileName, uploadedAt: new Date().toISOString(), uploadedBy: "Ryan Richmond" } },
+      }));
+      resetFormState();
+      const nextIncomplete = UPLOAD_STEPS.findIndex((s, i) => i > currentStep && !(event.files[s.fileType]?.uploaded));
+      if (nextIncomplete !== -1) setCurrentStep(nextIncomplete);
+    } else {
+      toast({ title: uploadContent.toast.uploadFailedTitle, description: result.message, variant: "destructive" });
+    }
+  };
+
+  // Upload file directly to GCS via signed URL with progress tracking
+  const uploadToGCSDirectly = async (fileToUpload: File, signedUrl: string): Promise<void> => {
+    // Step 1: Initiate resumable upload session
+    const initResponse = await fetch(signedUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": fileToUpload.type || "text/csv",
+        "x-goog-resumable": "start",
+      },
+    });
+
+    if (!initResponse.ok) {
+      throw new Error(`Failed to initiate upload: ${initResponse.status}`);
+    }
+
+    const sessionUrl = initResponse.headers.get("Location");
+    if (!sessionUrl) {
+      throw new Error("No session URL returned from GCS");
+    }
+
+    // Step 2: Upload the file to the session URL with progress tracking
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", sessionUrl, true);
+      xhr.setRequestHeader("Content-Type", fileToUpload.type || "text/csv");
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Network error during upload"));
+      xhr.send(fileToUpload);
+    });
+  };
+
   // Submit handler
   const handleUpload = (data?: FormSchema) => {
     startTransition(async () => {
@@ -331,38 +410,60 @@ export function UploadWizard({
       if (!built) return;
 
       const { fileToUpload, fileName } = built;
-      const formData = new FormData();
-      formData.append("file", fileToUpload);
-      formData.append("fileType", step.fileType);
-      formData.append("electionAuthorityName", electionAuthorityName);
-      formData.append("electionAuthorityType", electionAuthorityType);
-      formData.append("electionEventId", event.id);
-      if (isStepUploaded && stepAmendmentNotes) formData.append("amendmentNotes", stepAmendmentNotes);
 
-      const result = await uploadFile(formData);
+      // District maps use the original server-relay flow (small files, need server-side conversion)
+      if (!isCSV) {
+        const formData = new FormData();
+        formData.append("file", fileToUpload);
+        formData.append("fileType", step.fileType);
+        formData.append("electionAuthorityName", electionAuthorityName);
+        formData.append("electionAuthorityType", electionAuthorityType);
+        formData.append("electionEventId", event.id);
+        if (isStepUploaded && stepAmendmentNotes) formData.append("amendmentNotes", stepAmendmentNotes);
 
-      setLogs((prev) => [{
-        id: Date.now().toString(),
-        timestamp: new Date().toISOString(),
-        fileName,
-        fileType: step.fileType,
-        success: result.success,
-        message: result.message,
-        uploadedBy: "Ryan Richmond",
-        electionEventId: event.id,
-      }, ...prev]);
+        const result = await uploadFile(formData);
+        handleUploadResult(result, fileName);
+        return;
+      }
 
-      if (result.success) {
-        toast({ title: uploadContent.toast.uploadSuccessTitle, description: result.message });
-        setEvent((prev) => ({
-          ...prev,
-          files: { ...prev.files, [step.fileType]: { uploaded: true, fileName, uploadedAt: new Date().toISOString(), uploadedBy: "Ryan Richmond" } },
-        }));
-        resetFormState();
-        const nextIncomplete = UPLOAD_STEPS.findIndex((s, i) => i > currentStep && !(event.files[s.fileType]?.uploaded));
-        if (nextIncomplete !== -1) setCurrentStep(nextIncomplete);
-      } else {
-        toast({ title: uploadContent.toast.uploadFailedTitle, description: result.message, variant: "destructive" });
+      // CSV files: use signed URL for direct-to-GCS upload
+      try {
+        // 1. Get signed upload URL from server
+        const urlFormData = new FormData();
+        urlFormData.append("fileType", step.fileType);
+        urlFormData.append("fileName", fileName);
+        urlFormData.append("contentType", fileToUpload.type || "text/csv");
+        urlFormData.append("fileSize", String(fileToUpload.size));
+
+        const urlResult = await getSignedUploadUrl(urlFormData);
+        if (!urlResult.success || !urlResult.url || !urlResult.destination) {
+          handleUploadResult({ success: false, message: urlResult.error || "Failed to get upload URL" }, fileName);
+          return;
+        }
+
+        // 2. Upload directly to GCS with progress
+        setUploadProgress(0);
+        await uploadToGCSDirectly(fileToUpload, urlResult.url);
+        setUploadProgress(100);
+
+        // 3. Confirm upload with server (validate, audit, version)
+        const confirmFormData = new FormData();
+        confirmFormData.append("destination", urlResult.destination);
+        confirmFormData.append("fileType", step.fileType);
+        confirmFormData.append("fileName", fileName);
+        confirmFormData.append("fileSize", String(fileToUpload.size));
+        confirmFormData.append("electionAuthorityName", electionAuthorityName);
+        confirmFormData.append("electionAuthorityType", electionAuthorityType);
+        confirmFormData.append("electionEventId", event.id);
+        if (isStepUploaded && stepAmendmentNotes) confirmFormData.append("amendmentNotes", stepAmendmentNotes);
+
+        const result = await confirmUpload(confirmFormData);
+        handleUploadResult(result, fileName);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Upload failed. Please try again.";
+        handleUploadResult({ success: false, message }, fileName);
+      } finally {
+        setUploadProgress(null);
       }
     });
   };
@@ -374,6 +475,7 @@ export function UploadWizard({
     setPasteContent("");
     setInputMode("file");
     setStepAmendmentNotes("");
+    setUploadProgress(null);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -652,6 +754,21 @@ export function UploadWizard({
 
                         {file && <MappingStatusAlerts mapping={mapping} onOpenModal={() => setShowMappingModal(true)} />}
 
+                        {uploadProgress !== null && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">Uploading to storage...</span>
+                              <span className="font-medium">{uploadProgress}%</span>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-2.5">
+                              <div
+                                className="h-2.5 rounded-full bg-primary transition-all duration-300"
+                                style={{ width: `${uploadProgress}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
                         {file && showPreview && (
                           <DataPreview data={parsedData!} schema={schema} columnOrder={mapping.columnOrder} />
                         )}
@@ -671,7 +788,7 @@ export function UploadWizard({
                               </Button>
                             )}
                             <Button type="submit" disabled={!canUpload}>
-                              {isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{commonContent.loading.uploading}</>) : (<><UploadCloud className="mr-2 h-4 w-4" />{uploadContent.fileSelection.uploadFileButton}</>)}
+                              {isUploading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{uploadProgress !== null ? `Uploading ${uploadProgress}%` : commonContent.loading.uploading}</>) : (<><UploadCloud className="mr-2 h-4 w-4" />{uploadContent.fileSelection.uploadFileButton}</>)}
                             </Button>
                           </div>
                         </div>
@@ -733,7 +850,7 @@ export function UploadWizard({
                               </Button>
                             )}
                             <Button type="button" disabled={!canUpload} onClick={() => handleUpload()}>
-                              {isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{commonContent.loading.uploading}</>) : (<><UploadCloud className="mr-2 h-4 w-4" />{uploadContent.fileSelection.uploadDataButton}</>)}
+                              {isUploading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{uploadProgress !== null ? `Uploading ${uploadProgress}%` : commonContent.loading.uploading}</>) : (<><UploadCloud className="mr-2 h-4 w-4" />{uploadContent.fileSelection.uploadDataButton}</>)}
                             </Button>
                           </div>
                         </div>

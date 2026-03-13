@@ -39,21 +39,21 @@ variable "scanner_service_account_email" {
 }
 
 variable "scanner_memory" {
-  description = "Memory allocation for the scanner service (ClamAV needs ~1.5GB)"
+  description = "Memory allocation for the scanner service (ClamAV needs ~1.5GB + headroom for large file scanning)"
   type        = string
-  default     = "2Gi"
+  default     = "4Gi"
 }
 
 variable "scanner_cpu" {
   description = "CPU allocation for the scanner service"
   type        = string
-  default     = "1"
+  default     = "2"
 }
 
 variable "scanner_timeout_seconds" {
-  description = "Request timeout for the scanner service"
+  description = "Request timeout for the scanner service (large files need more time)"
   type        = number
-  default     = 300
+  default     = 900
 }
 
 variable "scanner_max_instances" {
@@ -65,4 +65,10 @@ variable "scanner_max_instances" {
 variable "project_number" {
   description = "GCP project number (used to derive the default Cloud Build service account)"
   type        = string
+}
+
+variable "cors_allowed_origins" {
+  description = "Allowed origins for GCS bucket CORS (browser-direct uploads via signed URLs)"
+  type        = list(string)
+  default     = ["*"]
 }

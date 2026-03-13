@@ -12,7 +12,10 @@ export const validationMessages = {
     "No file was provided. Please select a file and try again.",
 
   fileTooLarge:
-    "This file is too large. The maximum allowed size is 5 MB. Please reduce the file size and try again.",
+    "This file is too large. The maximum allowed size is 1 GB. Please reduce the file size and try again.",
+
+  fileTooLargeDistrictMaps:
+    "This file is too large. The maximum allowed size for district maps is 5 MB. Please reduce the file size and try again.",
 
   notCsv: "This file is not a CSV. Please upload a .csv file.",
 
