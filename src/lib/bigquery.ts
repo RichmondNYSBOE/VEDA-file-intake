@@ -44,7 +44,7 @@ export async function ensureSchema(): Promise<void> {
   const dataset = bq.dataset(DATASET);
   const [datasetExists] = await dataset.exists();
   if (!datasetExists) {
-    await dataset.create();
+    await dataset.create({ location: 'us-east1' });
   }
 
   // --- election_events ---
